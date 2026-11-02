@@ -35,6 +35,9 @@ namespace PdnAudit
 
                 List<string> foundLinks = await GetLinksAsync();
                 LinksAmountTextBlock.Text += foundLinks.Count.ToString();
+
+                List<string> foundFormsIds = await GetFormsAsync();
+                FormsAmountTextBlock.Text += foundFormsIds.Count.ToString();
             }
             catch(Exception ex)
             {
@@ -57,6 +60,19 @@ namespace PdnAudit
                 }
             }
             return links;
+        }
+        private async Task<List<string>> GetFormsAsync() {
+            if (page == null) return new List<string>();
+
+            var formsLocators = await page.Locator("form").AllAsync();
+            var formsId = new List<string>();
+
+            foreach (var form in formsLocators)
+            {
+                var id = await form.GetAttributeAsync("id") ?? "no id";
+                formsId.Add(id);
+            }
+            return formsId;
         }
         private async Task StartBrowserAsync() {
             try
