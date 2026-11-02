@@ -1,14 +1,17 @@
 ﻿using Microsoft.Playwright;
 using System.Text;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace PdnAudit
 {
@@ -17,61 +20,70 @@ namespace PdnAudit
     /// </summary>
     public partial class MainWindow : Window
     {
+        private IPage page;
+        private IBrowser browser;
+        private IPlaywright playwright;
         public MainWindow() {
             InitializeComponent();
 
-
-            // Создаем кнопку на лету
-            var button = new System.Windows.Controls.Button
+            Loaded += MainWindow_Loaded;
+        }
+        private async void MainWindow_Loaded(object sender, RoutedEventArgs e) {
+            try
             {
-                Content = "Проверить Playwright",
-                Width = 200,
-                Height = 50,
-                Margin = new Thickness(50)
-            };
+                await StartBrowserAsync();
 
-            // Привязываем к ней событие клика
-            button.Click += async (s, e) =>
+                List<string> foundLinks = await GetLinksAsync();
+                LinksAmountTextBlock.Text += foundLinks.Count.ToString();
+            }
+            catch(Exception ex)
             {
-                button.IsEnabled = false;
-                button.Content = "Загрузка...";
+                MessageBox.Show($"Ошибка при инициализации: {ex.Message}", "Ошибка");
+            }
 
-                try
+        }
+        private async Task<List<string>> GetLinksAsync() {
+            if (page == null) return new List<string>();
+
+            var linkLocators = await page.GetByRole(AriaRole.Link).AllAsync();
+            var links = new List<string>();
+
+            foreach(var locator in linkLocators)
+            {
+                var href = await locator.GetAttributeAsync("href");
+                if (!string.IsNullOrEmpty(href))
                 {
-                    // 1. Инициализируем Playwright
-                    using var playwright = await Playwright.CreateAsync();
-
-                    // 2. Запускаем браузер (headless: false — чтобы вы увидели окно браузера)
-                    await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
-                    {
-                        Headless = false // Поставьте true, если не хотите видеть окно браузера
-                    });
-
-                    // 3. Открываем новую страницу
-                    var page = await browser.NewPageAsync();
-
-                    // 4. Переходим на сайт (например, на Яндекс)
-                    await page.GotoAsync("https://ya.ru");
-
-                    // 5. Получаем заголовок страницы (тег <title>)
-                    string title = await page.TitleAsync();
-
-                    // 6. Показываем результат
-                    MessageBox.Show($"Успех! Заголовок сайта: {title}", "Playwright работает!");
+                    links.Add(href);
                 }
-                catch (System.Exception ex)
+            }
+            return links;
+        }
+        private async Task StartBrowserAsync() {
+            try
+            {
+                playwright = await Playwright.CreateAsync();
+                browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
                 {
-                    MessageBox.Show($"Ошибка: {ex.Message}\n\nУбедитесь, что вы запустили playwright.ps1 install", "Ошибка");
-                }
-                finally
-                {
-                    button.IsEnabled = true;
-                    button.Content = "Проверить Playwright";
-                }
-            };
+                    Headless = false 
+                });
+                page = await browser.NewPageAsync();
 
-            // Добавляем кнопку на форму
-            this.Content = button;
+                await page.GotoAsync("https://inf-oge.sdamgia.ru/", new PageGotoOptions
+                {
+                    WaitUntil = WaitUntilState.DOMContentLoaded
+                });
+
+                await page.EvaluateAsync("window.scrollTo(0, document.body.scrollHeight)");
+                await page.WaitForTimeoutAsync(3000);
+
+                string title = await page.TitleAsync();
+
+            }
+            catch (System.Exception ex)
+            {
+                MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка");
+            }
+            
         }
     }
 }

@@ -6,7 +6,8 @@
         xmlns:local="clr-namespace:PdnAudit"
         mc:Ignorable="d"
         Title="MainWindow" Height="450" Width="800">
-    <Grid>
-
-    </Grid>
+    <StackPanel Orientation="Vertical">
+        <TextBlock x:Name="LinksAmountTextBlock" Text="Количество ссылок на странице: " FontSize="30"></TextBlock>
+        <TextBlock x:Name="FormsAmountTextBlock" Text="Количество форм на странице: " FontSize="30"></TextBlock>
+    </StackPanel>
 </Window>
