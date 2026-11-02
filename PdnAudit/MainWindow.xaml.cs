@@ -20,6 +20,7 @@ namespace PdnAudit
         public MainWindow() {
             InitializeComponent();
 
+
             // Создаем кнопку на лету
             var button = new System.Windows.Controls.Button
             {
