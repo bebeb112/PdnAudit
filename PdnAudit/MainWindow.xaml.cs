@@ -38,11 +38,17 @@ namespace PdnAudit
 
                 await scanner.StartBrowserAsync();
 
-                var (privacyDocument, consentDocument) = await scanner.GetPdnDocuments();
+                /*var (privacyDocument, consentDocument) = await scanner.GetPdnDocuments();
 
                 ConsentDocumentTextBlock.Text += consentDocument.Url;
-                PrivacyDocumentTextBlock.Text += privacyDocument.Url;
-                LinksAmountTextBlock.Text = scanner.linksAmount.ToString();
+                PrivacyDocumentTextBlock.Text += privacyDocument.Url;*/
+
+                List<FormInfo> forms = await scanner.GetFormsAsync();
+                List<CheckResult> results = FormRules.CheckForms(forms);
+                foreach(var result in results)
+                {
+                    ResultsTextBlock.Text += result.Title + ", \n";
+                }
             }
             catch (Exception ex)
             {
