@@ -7,6 +7,9 @@
         mc:Ignorable="d"
         Title="MainWindow" Height="450" Width="800">
     <StackPanel Orientation="Vertical">
+        <TextBlock x:Name="PrivacyDocumentTextBlock" Text="Политика" FontSize="30" Padding="10"></TextBlock>
+        <TextBlock x:Name="ConsentDocumentTextBlock" Text="Согласие" FontSize="30" Padding="10"></TextBlock>
+        <TextBlock x:Name="DocumentLinksAmountTextBlock" Text="Количество" FontSize="30" Padding="10"></TextBlock>
         <TextBlock x:Name="LinksAmountTextBlock" Text="Количество ссылок на странице: " FontSize="30"></TextBlock>
         <TextBlock x:Name="FormsAmountTextBlock" Text="Количество форм на странице: " FontSize="30"></TextBlock>
     </StackPanel>

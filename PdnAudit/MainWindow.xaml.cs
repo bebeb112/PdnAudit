@@ -31,19 +31,36 @@ namespace PdnAudit
             Loaded += MainWindow_Loaded;
         }
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e) {
+            await Task.Delay(5000);
             try
             {
                 SiteScanner scanner = new SiteScanner();
 
-                ScanResult scanResult = await scanner.ScanSiteAsync();
+                await scanner.StartBrowserAsync();
 
-                LinksAmountTextBlock.Text += scanResult.Links.Count;
-                FormsAmountTextBlock.Text += scanResult.Forms.Count;
+                var (privacyDocument, consentDocument) = await scanner.GetPdnDocuments();
+
+                ConsentDocumentTextBlock.Text += consentDocument.Url;
+                PrivacyDocumentTextBlock.Text += privacyDocument.Url;
+                LinksAmountTextBlock.Text = scanner.linksAmount.ToString();
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 MessageBox.Show($"Ошибка при работе сканера: {ex.Message}", "Ошибка");
             }
+            /* try
+             {
+                 SiteScanner scanner = new SiteScanner();
+
+                 ScanResult scanResult = await scanner.ScanSiteAsync();
+
+                 LinksAmountTextBlock.Text += scanResult.Links.Count;
+                 FormsAmountTextBlock.Text += scanResult.Forms.Count;
+             }
+             catch(Exception ex)
+             {
+                 MessageBox.Show($"Ошибка при работе сканера: {ex.Message}", "Ошибка");
+             } */
 
         }
     }
