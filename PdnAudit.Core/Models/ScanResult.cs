@@ -9,6 +9,7 @@ namespace PdnAudit.Core.Models {
         public string Url { get; set; }
         public string PageTitle { get; set; }
         public List<string> Links { get; set; } = new List<string>();
-        public List<string> Forms { get; set; } = new List<string>();
+        public List<FormInfo> Forms { get; set; } = new List<FormInfo>();
+        public bool NeedsManualCheck { get; set; }
     }
 }

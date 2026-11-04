@@ -19,11 +19,56 @@ namespace PdnAudit.Core.Services {
             ScanResult scanResult = new ScanResult();
 
             await StartBrowserAsync();
+            var mainPage = page;
+            var mainUrl = page.Url;
+
 
             scanResult.Links = await GetLinksAsync();
-            //scanResult.Forms = await GetFormsAsync();
+            if (await OpenAuthFormAsync())
+            {
+                scanResult.Forms = await GetFormsAsync();
+                if (scanResult.Forms.Count == 0) scanResult.NeedsManualCheck = true;
+            }
+            else
+            {
+                scanResult.NeedsManualCheck = true;
+            }
+
+            if (page != mainPage)
+            {
+                await page.CloseAsync();
+                page = mainPage;
+            }
+            await page.GotoAsync(mainUrl, new() { WaitUntil = WaitUntilState.DOMContentLoaded });
 
             return scanResult;
+        }
+        private async Task<bool> OpenAuthFormAsync() {
+            var context = page.Context;
+            var pagesBefore = context.Pages.Count;
+
+            if (!await FindLoginAsync()) return false;
+
+            await page.WaitForTimeoutAsync(500);
+
+            if (context.Pages.Count > pagesBefore)
+            {
+                page = context.Pages.Last();
+                await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+            }
+
+            try
+            {
+                await page.Locator(
+                    "input[type=password]:visible, input[type=tel]:visible, " +
+                    "input[type=email]:visible, input[autocomplete*=username]:visible")
+                    .First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 7000 });
+                return true;
+            }
+            catch (PlaywrightException)
+            {
+                return false;
+            }
         }
 
         private async Task<List<string>> GetLinksAsync() {
@@ -44,13 +89,8 @@ namespace PdnAudit.Core.Services {
         }
         public async Task<List<FormInfo>> GetFormsAsync() {
             var formsData = new List<FormInfo>();
-
-            var formLocators = await page.Locator("form").AllAsync();
-            foreach (var formLocator in formLocators)
-            {
-
-
-                var formInfoJson = await formLocator.EvaluateAsync<string>("""
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            string formInfoJson = """
 (form) => {
     const norm = (s) => (s || '')
         .replace(/[\u00AD\u200B-\u200D\uFEFF]/g, '')
@@ -158,7 +198,7 @@ namespace PdnAudit.Core.Services {
     }
 
     // ---------- 5. текст кнопки отправки ----------
-    const submit = form.querySelector('button[type="submit"], input[type="submit"], button:not([type])');
+    const submit = form.querySelector('button[type="submit"], input[type="submit"], button:not([type]), [role=button]');
     if (submit) result.SubmitTextNearby = norm(submit.innerText || submit.value || '');
 
     // ---------- 6. грубое определение типа формы ----------
@@ -175,18 +215,98 @@ namespace PdnAudit.Core.Services {
 
     return JSON.stringify(result);
 }
-""");
-                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var formInfo = JsonSerializer.Deserialize<FormInfo>(formInfoJson, options);
+""";
+            //че за фигня разобраться
+            string MarkRootsJs = """
+() => {
+    document.querySelectorAll('[data-pdn-root]').forEach(e => e.removeAttribute('data-pdn-root'));
+    const visible = e => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
+    const skip = ['hidden','submit','button','reset','image','checkbox','radio','file','search'];
+    const inputs = [...document.querySelectorAll('input, textarea')]
+        .filter(e => visible(e) && !skip.includes(e.type));
 
-                if (formInfo == null) continue;
-                formInfo.BasePageUrl = page.Url;
-                formsData.Add(formInfo);
+    let n = 0;
+    for (const inp of inputs) {
+        let root = inp.closest('form')
+                ?? inp.closest('dialog, [role=dialog], [class*=modal], [class*=popup]');
+        if (!root) {
+            root = inp.parentElement;
+            for (let i = 0; i < 3 && root.parentElement
+                 && root.parentElement.tagName !== 'BODY'; i++) root = root.parentElement;
+        }
+        if (root.closest('[data-pdn-root]')) continue;
+        root.setAttribute('data-pdn-root', String(n++));
+    }
+    return n;
+}
+""";
 
+            foreach (var frame in page.Frames)
+            {
+                try { await frame.EvaluateAsync<int>(MarkRootsJs); }
+                catch (PlaywrightException) { continue; }
+
+                var roots = await frame.Locator("[data-pdn-root]").AllAsync();
+                foreach (var root in roots)
+                {
+                    var json = await root.EvaluateAsync<string>(formInfoJson);
+                    var formInfo = JsonSerializer.Deserialize<FormInfo>(json, options);
+                    if (formInfo == null) continue;
+
+                    formInfo.BasePageUrl = page.Url;
+                    formsData.Add(formInfo);
+
+                }
             }
             return formsData;
         }
-        
+        public async Task<bool> FindLoginAsync() {
+            
+            var textPattern = new Regex(
+                @"войти|вход|авторизац|регистрац|зарегистрир|личный кабинет|sign\s?in|log\s?in|sign\s?up|register",
+                RegexOptions.IgnoreCase);
+
+            // Кандидаты: кнопки, ссылки и просто кликабельные элементы
+            var candidates = new[]
+            {
+        page.GetByRole(AriaRole.Button, new() { NameRegex = textPattern }),
+        page.GetByRole(AriaRole.Link,   new() { NameRegex = textPattern }),
+        page.Locator("[type=submit], [role=button], a, button")
+            .Filter(new() { HasTextRegex = textPattern }),
+    };
+
+            foreach (var locator in candidates)
+            {
+                try
+                {
+                    var count = await locator.CountAsync();
+                    for (int i = 0; i < count; i++)
+                    {
+                        var element = locator.Nth(i);
+
+                        if (!await element.IsVisibleAsync() || !await element.IsEnabledAsync())
+                            continue;
+
+                        await element.ScrollIntoViewIfNeededAsync();
+                        await element.ClickAsync(new() { Timeout = 5000 });
+
+                        // Ждём, пока страница или модальное окно отреагируют
+                        await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+
+                        Debug.WriteLine($"КНОПКА НАЖАТА: {await element.InnerTextAsync()}");
+                        return true;
+                    }
+                }
+                catch (PlaywrightException ex)
+                {
+                    // Элемент перекрыт, пропал или недоступен — пробуем следующий
+                    Debug.WriteLine($"Не удалось нажать: {ex.Message}");
+                }
+            }
+
+            Debug.WriteLine("Кнопка входа/регистрации не найдена");
+            return false;
+        }
         public async Task StartBrowserAsync() {
             playwright = await Playwright.CreateAsync();
             browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
@@ -195,7 +315,7 @@ namespace PdnAudit.Core.Services {
             });
             page = await browser.NewPageAsync();
 
-            await page.GotoAsync("https://demoqa.com/automation-practice-form", new PageGotoOptions
+            await page.GotoAsync("https://www.citilink.ru/", new PageGotoOptions
             {
                 WaitUntil = WaitUntilState.DOMContentLoaded
             });
@@ -343,3 +463,4 @@ namespace PdnAudit.Core.Services {
         
     }
 }
+//https://www.citilink.ru/ https://demoqa.com/automation-practice-form

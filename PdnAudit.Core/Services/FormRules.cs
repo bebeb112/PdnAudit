@@ -9,11 +9,15 @@ using System.Threading.Tasks;
 namespace PdnAudit.Core.Services {
     public class FormRules {
         public static List<CheckResult> CheckForms(List<FormInfo> forms) {
+
             List<CheckResult> results = new List<CheckResult>();
+
             foreach (var form in forms)
             {
                 if (!form.HasPdnFields) continue;
-                if(!form.HasConsentCheckbox && !form.HasImplicitConsentText)
+
+                bool isLogin = form.FormType == "Авторизация";
+                if(!isLogin && !form.HasConsentCheckbox && !form.HasImplicitConsentText)
                 {
                     results.Add(new CheckResult
                     {
@@ -33,7 +37,7 @@ namespace PdnAudit.Core.Services {
                         Recommendation = "Убрать атрибут checked у чекбокса"
                     });
                 }
-                if (!form.NearbyPrivacyLink)
+                if (!isLogin && !form.NearbyPrivacyLink)
                 {
                     results.Add(new CheckResult
                     {
@@ -43,7 +47,7 @@ namespace PdnAudit.Core.Services {
                         Recommendation = "Разместить ссылку на Политику прямо в форме"
                     });
                 }
-                if (!form.NearbyConsentLink)
+                if (!isLogin && !form.HasConsentCheckbox && form.HasImplicitConsentText)
                 {
                     results.Add(new CheckResult
                     {
@@ -51,6 +55,16 @@ namespace PdnAudit.Core.Services {
                         Title = "Согласие выражено только текстом без чекбокса",
                         LawReference = "ст. 9 152-ФЗ",
                         Recommendation = "Добавить чекбокс, чтобы согласие было конкретным и осознанным"
+                    });
+                }
+                if (!isLogin && (form.HasConsentCheckbox || form.HasImplicitConsentText) && !form.NearbyConsentLink)
+                {
+                    results.Add(new CheckResult
+                    {
+                        Severity = "Замечание",
+                        Title = "Рядом с формой нет ссылки на текст согласия",
+                        LawReference = "ст. 9 152-ФЗ",
+                        Recommendation = "Добавить ссылку на документ согласия"
                     });
                 }
                 if (IsExternal(form))
@@ -68,15 +82,16 @@ namespace PdnAudit.Core.Services {
             return results;
 
         }
+        //Разобрать че это за фигня
         private static bool IsExternal(FormInfo form) {
-            if (!string.IsNullOrWhiteSpace(form.ActionUrl))
-            {
-                var actionHost = new Uri(form.ActionUrl).Host;
-                var currentHost = new Uri(form.BasePageUrl).Host;
+            if (!Uri.TryCreate(form.ActionUrl, UriKind.Absolute, out var action)) return false;
+            if (!Uri.TryCreate(form.BasePageUrl, UriKind.Absolute, out var current)) return false;
 
-                if (!actionHost.Contains(currentHost)) return true;
-            }
-            return false;
+            static string Root(string h) => h.StartsWith("www.") ? h[4..] : h;
+            var a = Root(action.Host);
+            var c = Root(current.Host);
+
+            return !(a == c || a.EndsWith("." + c) || c.EndsWith("." + a));
         }
         
     }

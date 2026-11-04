@@ -31,23 +31,21 @@ namespace PdnAudit
             Loaded += MainWindow_Loaded;
         }
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e) {
-            await Task.Delay(5000);
             try
             {
-                SiteScanner scanner = new SiteScanner();
+                var scanner = new SiteScanner();
+                ScanResult scanResult = await scanner.ScanSiteAsync();
 
-                await scanner.StartBrowserAsync();
+                
+                FormsAmountTextBlock.Text += scanResult.Forms.Count;
 
-                /*var (privacyDocument, consentDocument) = await scanner.GetPdnDocuments();
+                if (scanResult.NeedsManualCheck)
+                    ResultsTextBlock.Text += "Форма не найдена автоматически, нужна ручная проверка\n";
 
-                ConsentDocumentTextBlock.Text += consentDocument.Url;
-                PrivacyDocumentTextBlock.Text += privacyDocument.Url;*/
-
-                List<FormInfo> forms = await scanner.GetFormsAsync();
-                List<CheckResult> results = FormRules.CheckForms(forms);
-                foreach(var result in results)
+                var results = FormRules.CheckForms(scanResult.Forms);
+                foreach (var result in results)
                 {
-                    ResultsTextBlock.Text += result.Title + ", \n";
+                    ResultsTextBlock.Text += $"[{result.Severity}] {result.Title}\n";
                 }
             }
             catch (Exception ex)
