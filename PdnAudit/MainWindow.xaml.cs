@@ -1,5 +1,6 @@
 ﻿using Microsoft.Playwright;
 using PdnAudit.Core.Models;
+using PdnAudit.Core.Models.Tracking;
 using PdnAudit.Core.Services;
 using PdnAudit.Core.Services.Extractors;
 using PdnAudit.Core.Services.Rules;
@@ -31,115 +32,88 @@ namespace PdnAudit
         private IPlaywright playwright;
         public MainWindow() {
             InitializeComponent();
-
-            AIAnalyzer analyzer = new AIAnalyzer();
-            Loaded += MainWindow_Loaded;
         }
-        private async void MainWindow_Loaded(object sender, RoutedEventArgs e) {
-            DocumentLinksAmountTextBlock.Text = "";
-            FormsAmountTextBlock.Text = "";
-            ResultsTextBlock.Text = "";
+        private async void CheckButton_Click(object sender, RoutedEventArgs e) {
+            string url = UrlTextBox.Text.Trim();
+            if (string.IsNullOrEmpty(url))
+            {
+                MessageBox.Show("Введите URL сайта", "Ошибка");
+                return;
+            }
+
+            // Блокируем кнопку, чтобы не нажимали дважды
+            CheckButton.IsEnabled = false;
+            CheckButton.Content = "Анализ...";
+
+            // Очищаем старые результаты
+            CriticalList.ItemsSource = null;
+            WarningList.ItemsSource = null;
+            PassedList.ItemsSource = null;
 
             SiteScanner scanner = null;
 
             try
             {
-                // 1. Инициализация сканера и запуск браузера
                 scanner = new SiteScanner();
-                ScanResult scanResult = await scanner.ScanSiteAsync();
+                ScanResult scanResult = await scanner.ScanSiteAsync(url);
 
-                Uri baseUrl = new Uri("https://www.citilink.ru/");
+                Uri baseUrl = new Uri(url);
 
-                // 2. Поиск ссылок на Политику и Согласие
                 (Document privacyDocument, Document consentDocument) = await scanner.GetPdnDocuments();
-
-                FormsAmountTextBlock.Text += $"Найдено форм: {scanResult.Forms.Count}\n";
-                if (scanResult.NeedsManualCheck)
-                    FormsAmountTextBlock.Text += "ВНИМАНИЕ: Форма не найдена автоматически, нужна ручная проверка\n";
-
-                // 3. Анализ трекеров и Cookies
                 var tracking = await scanner.GetTrackingAsync(baseUrl.ToString());
-
-                // 4. Поиск реквизитов
                 var op = await scanner.GetOperatorInfoAsync(privacyDocument?.Url);
 
-                // 5. Сбор всех правил в один список
                 var all = new List<CheckResult>();
 
                 if (scanResult.Forms != null)
                     all.AddRange(FormRules.CheckForms(scanResult.Forms));
-
                 all.AddRange(OperatorRules.Check(op));
                 all.AddRange(TrackingRules.Check(tracking));
 
-                // Проверка наличия самих документов
                 if (string.IsNullOrEmpty(privacyDocument?.Url))
                     all.Add(new CheckResult { Severity = Severity.Critical, Title = "Не найдена Политика обработки ПДн" });
 
                 if (string.IsNullOrEmpty(consentDocument?.Url))
                     all.Add(new CheckResult { Severity = Severity.Warning, Title = "Не найдено отдельное Согласие на обработку ПДн" });
 
-                if (privacyDocument != null && !string.IsNullOrEmpty(privacyDocument.Url))
+                if (privacyDocument != null && !string.IsNullOrEmpty(privacyDocument.FullText))
                 {
                     try
                     {
                         AIAnalyzer analyzer = new AIAnalyzer();
                         string token = await analyzer.GetGigaChatTokenAsync();
-     
-                        // string policyText = "Настоящая политика определяет цели обработки данных: оформление заказов. Срок хранения данных: 5 лет. Передача третьим лицам не осуществляется."
-                        if (privacyDocument != null && !string.IsNullOrEmpty(privacyDocument.FullText))
-                        {
-                            string rawAiResponse = await analyzer.AnalyzeGigaChatAsync(token, privacyDocument.FullText);
-
-                            string cleanJson = TextNormalizer.CleanJsonFromAI(rawAiResponse);
-
-                            AiAnalysisResult aiResult = analyzer.ParseAiResponse(cleanJson);
-
-                            all.AddRange(AiAnalysisRules.Check(aiResult));
-                        }
-                        else
-                        {
-                            all.Add(new CheckResult { Severity = Severity.Info, Title = "Текст Политики слишком короткий для анализа ИИ" });
-                        }
+                        string rawAiResponse = await analyzer.AnalyzeGigaChatAsync(token, privacyDocument.FullText);
+                        string cleanJson = TextNormalizer.CleanJsonFromAI(rawAiResponse);
+                        AiAnalysisResult aiResult = analyzer.ParseAiResponse(cleanJson);
+                        all.AddRange(AiAnalysisRules.Check(aiResult));
                     }
                     catch (Exception ex)
                     {
-                        all.Add(new CheckResult { Severity = Severity.Info, Title = $"Ошибка при анализе ИИ: {ex.Message}" });
+                        all.Add(new CheckResult { Severity = Severity.Info, Title = $"Ошибка ИИ: {ex.Message}" });
                     }
                 }
-                var critical = all.Where(r => r.Severity == Severity.Critical).ToList();
-                var warnings = all.Where(r => r.Severity == Severity.Warning || r.Severity == Severity.Info).ToList();
-                var passed = all.Where(r => r.Severity == Severity.Passed).ToList();
 
-                var uniqueCritical = critical.GroupBy(c => c.Title).Select(g => g.First()).ToList();
+                var critical = all.Where(r => r.Severity == Severity.Critical).GroupBy(c => c.Title).Select(g => g.First()).Select(r => new ReportLine { Title = r.Title }).ToList();
+                var warnings = all.Where(r => r.Severity == Severity.Warning || r.Severity == Severity.Info).GroupBy(c => c.Title).Select(g => g.First()).Select(r => new ReportLine { Title = r.Title }).ToList();
+                var passed = all.Where(r => r.Severity == Severity.Passed).GroupBy(c => c.Title).Select(g => g.First()).Select(r => new ReportLine { Title = r.Title }).ToList();
 
-                foreach (var c in uniqueCritical)
-                {
-                    DocumentLinksAmountTextBlock.Text += $"[КРИТИЧНО] {c.Title}\n";
-                }
-
-                foreach (var w in warnings)
-                {
-                    FormsAmountTextBlock.Text += $"[ЗАМЕЧАНИЕ] {w.Title}\n";
-                }
-
-                foreach (var p in passed)
-                {
-                    ResultsTextBlock.Text += $"[ОК] {p.Title}\n";
-                }
+                CriticalList.ItemsSource = critical;
+                WarningList.ItemsSource = warnings;
+                PassedList.ItemsSource = passed;
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Критическая ошибка при работе программы: {ex.Message}\n\n{ex.StackTrace}", "Ошибка");
+                MessageBox.Show($"Ошибка при проверке: {ex.Message}", "Ошибка");
             }
             finally
             {
-                // 9. Обязательно закрываем браузер и освобождаем ресурсы
-                if (scanner != null)
-                {
-                    await scanner.CloseAsync();
-                }
+                if (scanner != null) await scanner.CloseAsync();
+                CheckButton.IsEnabled = true;
+                CheckButton.Content = "Проверить";
             }
+        }
+        private void GenerateReportButton_Click(object sender, RoutedEventArgs e) {
+            MessageBox.Show("Здесь будет генерация HTML или PDF отчета. (В разработке)", "Отчет");
         }
     }
 }

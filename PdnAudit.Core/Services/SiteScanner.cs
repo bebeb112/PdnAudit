@@ -19,7 +19,7 @@ namespace PdnAudit.Core.Services {
         private IBrowser browser;
         private IPlaywright playwright;
         private int maxExtraPages = 6;
-        private string _startUrl = "https://www.citilink.ru/";
+        private string _startUrl;
         public int linksAmount { get; set; }
         private const string FormScript = """
 (form) => {
@@ -165,7 +165,9 @@ namespace PdnAudit.Core.Services {
         private static readonly Regex FileExtRx = new(@"\.(jpe?g|png|gif|svg|webp|pdf|docx?|xlsx?|zip|rar|mp4|mp3)$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
-        public async Task<ScanResult> ScanSiteAsync() {
+        public async Task<ScanResult> ScanSiteAsync(string startUrl) {
+            _startUrl = startUrl;
+
             ScanResult scanResult = new ScanResult();
 
             await StartBrowserAsync();
@@ -197,7 +199,15 @@ namespace PdnAudit.Core.Services {
             var context = page.Context;
             var pagesBefore = context.Pages.Count;
 
-            if (!await FindLoginAsync()) return false;
+            try
+            {
+                if (!await FindLoginAsync()) return false;
+            }
+            catch (PlaywrightException ex)
+            {
+                Debug.WriteLine($"Не удалось открыть форму входа: {ex.Message}");
+                return false;
+            }
 
             await page.WaitForTimeoutAsync(500);
 
@@ -212,7 +222,7 @@ namespace PdnAudit.Core.Services {
                 await page.Locator(
                     "input[type=password]:visible, input[type=tel]:visible, " +
                     "input[type=email]:visible, input[autocomplete*=username]:visible")
-                    .First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 7000 });
+                    .First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 5000 });
                 return true;
             }
             catch (PlaywrightException)
@@ -389,6 +399,17 @@ namespace PdnAudit.Core.Services {
                 try
                 {
                     var count = await locator.CountAsync();
+
+                    try
+                    {
+                        await locator.First.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 3000 });
+                        count = await locator.CountAsync();
+                    }
+                    catch (TimeoutException)
+                    {
+                        continue; 
+                    }
+
                     for (int i = 0; i < count; i++)
                     {
                         var element = locator.Nth(i);
@@ -397,18 +418,17 @@ namespace PdnAudit.Core.Services {
                             continue;
 
                         await element.ScrollIntoViewIfNeededAsync();
-                        await element.ClickAsync(new() { Timeout = 5000 });
+                        
+                        await element.ClickAsync(new() { Timeout = 3000, Force = true });
 
-                        // Ждём, пока страница или модальное окно отреагируют
                         await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
 
                         Debug.WriteLine($"КНОПКА НАЖАТА: {await element.InnerTextAsync()}");
                         return true;
                     }
                 }
-                catch (PlaywrightException ex)
+                catch (Exception ex)
                 {
-                    // Элемент перекрыт, пропал или недоступен — пробуем следующий
                     Debug.WriteLine($"Не удалось нажать: {ex.Message}");
                 }
             }
@@ -424,10 +444,12 @@ namespace PdnAudit.Core.Services {
             });
             page = await browser.NewPageAsync();
 
-            await page.GotoAsync("https://www.citilink.ru/", new PageGotoOptions
+            await page.GotoAsync(_startUrl, new PageGotoOptions
             {
                 WaitUntil = WaitUntilState.DOMContentLoaded
             });
+            await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+            await page.WaitForTimeoutAsync(3000);
 
             await page.EvaluateAsync("window.scrollTo(0, document.body.scrollHeight)");
             await page.WaitForTimeoutAsync(3000);
@@ -628,7 +650,6 @@ namespace PdnAudit.Core.Services {
 
             foreach (var url in urls.Distinct().Take(4))
             {
-                // ИСПРАВЛЕНИЕ: Создаем НОВЫЙ контекст и новую страницу в нем
                 var newContext = await browser.NewContextAsync();
                 var p = await newContext.NewPageAsync();
 
@@ -714,9 +735,10 @@ namespace PdnAudit.Core.Services {
         }
         public async Task CloseAsync() {
             if (browser != null) await browser.CloseAsync();
-            if (playwright != null) playwright.Dispose(); // У IPlaywright метод Dispose (не Async)
+            if (playwright != null) playwright.Dispose();
         }
         public Task<TrackingResult> GetTrackingAsync(string url) => new TrackingAnalyzer(browser).AnalyzeAsync(url);
     }
 }
 //https://www.citilink.ru/ https://demoqa.com/automation-practice-form
+// https://www.techport.ru/?srsltid=AYCX9vKJ-rCbGCqVORI4TYIGUg5Y2n5JXPXAnjE2ulZcu-qc5EPqvztZ
