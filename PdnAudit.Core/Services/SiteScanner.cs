@@ -14,83 +14,10 @@ namespace PdnAudit.Core.Services {
         private IPage page;
         private IBrowser browser;
         private IPlaywright playwright;
-        public int linksAmount { get; set; } 
-        public async Task<ScanResult> ScanSiteAsync() {
-            ScanResult scanResult = new ScanResult();
-
-            await StartBrowserAsync();
-            var mainPage = page;
-            var mainUrl = page.Url;
-
-
-            scanResult.Links = await GetLinksAsync();
-            if (await OpenAuthFormAsync())
-            {
-                scanResult.Forms = await GetFormsAsync();
-                if (scanResult.Forms.Count == 0) scanResult.NeedsManualCheck = true;
-            }
-            else
-            {
-                scanResult.NeedsManualCheck = true;
-            }
-
-            if (page != mainPage)
-            {
-                await page.CloseAsync();
-                page = mainPage;
-            }
-            await page.GotoAsync(mainUrl, new() { WaitUntil = WaitUntilState.DOMContentLoaded });
-
-            return scanResult;
-        }
-        private async Task<bool> OpenAuthFormAsync() {
-            var context = page.Context;
-            var pagesBefore = context.Pages.Count;
-
-            if (!await FindLoginAsync()) return false;
-
-            await page.WaitForTimeoutAsync(500);
-
-            if (context.Pages.Count > pagesBefore)
-            {
-                page = context.Pages.Last();
-                await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
-            }
-
-            try
-            {
-                await page.Locator(
-                    "input[type=password]:visible, input[type=tel]:visible, " +
-                    "input[type=email]:visible, input[autocomplete*=username]:visible")
-                    .First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 7000 });
-                return true;
-            }
-            catch (PlaywrightException)
-            {
-                return false;
-            }
-        }
-
-        private async Task<List<string>> GetLinksAsync() {
-            if (page == null) return new List<string>();
-
-            var linkLocators = await page.GetByRole(AriaRole.Link).AllAsync();
-            var links = new List<string>();
-
-            foreach (var locator in linkLocators)
-            {
-                var href = await locator.GetAttributeAsync("href");
-                if (!string.IsNullOrEmpty(href))
-                {
-                    links.Add(href);
-                }
-            }
-            return links;
-        }
-        public async Task<List<FormInfo>> GetFormsAsync() {
-            var formsData = new List<FormInfo>();
-            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            string formInfoJson = """
+        private int maxExtraPages = 6;
+        private string _startUrl = "https://www.citilink.ru/";
+        public int linksAmount { get; set; }
+        private const string FormScript = """
 (form) => {
     const norm = (s) => (s || '')
         .replace(/[\u00AD\u200B-\u200D\uFEFF]/g, '')
@@ -216,49 +143,227 @@ namespace PdnAudit.Core.Services {
     return JSON.stringify(result);
 }
 """;
-            //че за фигня разобраться
-            string MarkRootsJs = """
-() => {
-    document.querySelectorAll('[data-pdn-root]').forEach(e => e.removeAttribute('data-pdn-root'));
-    const visible = e => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
-    const skip = ['hidden','submit','button','reset','image','checkbox','radio','file','search'];
-    const inputs = [...document.querySelectorAll('input, textarea')]
-        .filter(e => visible(e) && !skip.includes(e.type));
+        private record LinkDto(string T, string H);
+        private static readonly (string Kind, Regex Rx)[] FormPageKinds =
+{
+    ("Обратная связь", new Regex(@"контакт|обратн\w*\s+связ|связаться|заявк|заказать|звонок|feedback|contact|callback|request",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+    ("Авторизация", new Regex(@"\bвойти\b|\bвход\b|авториз|login|log-in|signin|sign-in|\bauth\b|личн\w*\s+кабинет|account",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+    ("Регистрация", new Regex(@"регистрац|зарегистр|register|signup|sign-up",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+    ("Заказ", new Regex(@"корзин|оформлен|cart|basket|checkout|order",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+    ("Подписка", new Regex(@"подпис|subscribe|newsletter",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+};
 
-    let n = 0;
-    for (const inp of inputs) {
-        let root = inp.closest('form')
-                ?? inp.closest('dialog, [role=dialog], [class*=modal], [class*=popup]');
-        if (!root) {
-            root = inp.parentElement;
-            for (let i = 0; i < 3 && root.parentElement
-                 && root.parentElement.tagName !== 'BODY'; i++) root = root.parentElement;
-        }
-        if (root.closest('[data-pdn-root]')) continue;
-        root.setAttribute('data-pdn-root', String(n++));
-    }
-    return n;
-}
-""";
+        private static readonly Regex FileExtRx = new(@"\.(jpe?g|png|gif|svg|webp|pdf|docx?|xlsx?|zip|rar|mp4|mp3)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
+        public async Task<ScanResult> ScanSiteAsync() {
+            ScanResult scanResult = new ScanResult();
 
-            foreach (var frame in page.Frames)
+            await StartBrowserAsync();
+            var mainPage = page;
+            var mainUrl = page.Url;
+
+
+            scanResult.Links = await GetLinksAsync();
+            if (await OpenAuthFormAsync())
             {
-                try { await frame.EvaluateAsync<int>(MarkRootsJs); }
-                catch (PlaywrightException) { continue; }
+                scanResult.Forms = await GetFormsAsync();
+                if (scanResult.Forms.Count == 0) scanResult.NeedsManualCheck = true;
+            }
+            else
+            {
+                scanResult.NeedsManualCheck = true;
+            }
 
-                var roots = await frame.Locator("[data-pdn-root]").AllAsync();
-                foreach (var root in roots)
+            if (page != mainPage)
+            {
+                await page.CloseAsync();
+                page = mainPage;
+            }
+            await page.GotoAsync(mainUrl, new() { WaitUntil = WaitUntilState.DOMContentLoaded });
+
+            return scanResult;
+        }
+        private async Task<bool> OpenAuthFormAsync() {
+            var context = page.Context;
+            var pagesBefore = context.Pages.Count;
+
+            if (!await FindLoginAsync()) return false;
+
+            await page.WaitForTimeoutAsync(500);
+
+            if (context.Pages.Count > pagesBefore)
+            {
+                page = context.Pages.Last();
+                await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+            }
+
+            try
+            {
+                await page.Locator(
+                    "input[type=password]:visible, input[type=tel]:visible, " +
+                    "input[type=email]:visible, input[autocomplete*=username]:visible")
+                    .First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 7000 });
+                return true;
+            }
+            catch (PlaywrightException)
+            {
+                return false;
+            }
+        }
+
+        private async Task<List<string>> GetLinksAsync() {
+            if (page == null) return new List<string>();
+
+            var linkLocators = await page.GetByRole(AriaRole.Link).AllAsync();
+            var links = new List<string>();
+
+            foreach (var locator in linkLocators)
+            {
+                var href = await locator.GetAttributeAsync("href");
+                if (!string.IsNullOrEmpty(href))
                 {
-                    var json = await root.EvaluateAsync<string>(formInfoJson);
-                    var formInfo = JsonSerializer.Deserialize<FormInfo>(json, options);
-                    if (formInfo == null) continue;
-
-                    formInfo.BasePageUrl = page.Url;
-                    formsData.Add(formInfo);
-
+                    links.Add(href);
                 }
             }
-            return formsData;
+            return links;
+        }
+        public async Task<List<FormInfo>> GetFormsAsync() {
+            var all = new List<FormInfo>();
+            var seen = new HashSet<string>();
+            int maxExtraPages = 6; // Значение по умолчанию
+
+            void AddUnique(IEnumerable<FormInfo> forms) {
+                foreach (var f in forms)
+                {
+                    string sig = $"{f.FormType}|{f.ActionUrl}|" +
+                                 string.Join(",", f.Fields.Select(x => $"{x.Type}:{x.Name}:{x.Placeholder}"));
+                    if (seen.Add(sig)) all.Add(f);
+                }
+            }
+
+            // 1. Стартовая страница
+            List<string> extraUrls;
+
+            // ИСПРАВЛЕНИЕ: Создаем отдельный контекст для стартовой страницы
+            var startContext = await browser.NewContextAsync();
+            var start = await startContext.NewPageAsync();
+
+            try
+            {
+                await OpenForScanAsync(start, _startUrl);
+                AddUnique(await ExtractFormsAsync(start));
+                extraUrls = await FindFormPagesAsync(start, maxExtraPages);
+            }
+            finally
+            {
+                await startContext.CloseAsync(); // Закрываем контекст вместе со страницей
+            }
+
+            // 2. Остальные страницы
+            foreach (var url in extraUrls)
+            {
+                // ИСПРАВЛЕНИЕ: Для каждой новой страницы создаем СВОЙ контекст
+                var pageContext = await browser.NewContextAsync();
+                var p = await pageContext.NewPageAsync();
+
+                try
+                {
+                    await OpenForScanAsync(p, url);
+                    AddUnique(await ExtractFormsAsync(p));
+                }
+                catch (PlaywrightException ex)
+                {
+                    Debug.WriteLine($"FORMS: не открыть {url}: {ex.Message}");
+                }
+                finally
+                {
+                    await pageContext.CloseAsync(); // Обязательно закрываем контекст
+                }
+            }
+
+            // 3. Формы без полей ввода (поиск и т.п.) не относятся к сбору ПДн
+            return all.Where(f => f.Fields.Count > 0).ToList();
+        }
+        // ---- открыть страницу и подготовить к сбору ----
+        private static async Task OpenForScanAsync(IPage p, string url) {
+            await p.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 30000 });
+            await p.WaitForTimeoutAsync(1500);
+            await p.EvaluateAsync("window.scrollTo(0, document.body.scrollHeight)");
+            await p.WaitForTimeoutAsync(1000);
+        }
+
+        // ---- все формы одной страницы ----
+        private async Task<List<FormInfo>> ExtractFormsAsync(IPage p) {
+            var result = new List<FormInfo>();
+            var locators = await p.Locator("form").AllAsync();
+
+            foreach (var formLocator in locators.Take(15))   // защита от страниц с сотнями форм (каталог)
+            {
+                try
+                {
+                    string? json = await formLocator.EvaluateAsync<string>(FormScript);
+                    if (string.IsNullOrEmpty(json)) continue;
+
+                    var info = JsonSerializer.Deserialize<FormInfo>(json, JsonOpts);
+                    if (info == null) continue;
+
+                    info.BasePageUrl = p.Url;
+                    result.Add(info);
+                }
+                catch (Exception ex) when (ex is PlaywrightException || ex is JsonException)
+                {
+                    Debug.WriteLine($"FORMS: ошибка формы на {p.Url}: {ex.Message}");
+                }
+            }
+            return result;
+        }
+
+        // ---- поиск страниц, где вероятны формы ----
+        private async Task<List<string>> FindFormPagesAsync(IPage p, int maxPages) {
+            string json = await p.EvaluateAsync<string>("""
+        () => JSON.stringify([...document.querySelectorAll('a[href]')]
+              .map(a => ({ t: a.innerText || a.textContent || '', h: a.href })))
+        """);
+
+            var links = JsonSerializer.Deserialize<List<LinkDto>>(json, JsonOpts) ?? new();
+            var startUri = new Uri(_startUrl);
+            var perKind = new Dictionary<string, int>();
+            var result = new List<string>();
+
+            foreach (var l in links)
+            {
+                if (result.Count >= maxPages) break;
+                if (!Uri.TryCreate(l.H, UriKind.Absolute, out var u)) continue;
+                if (u.Scheme != "http" && u.Scheme != "https") continue;
+                if (!TrackerDictionary.IsSameSite(u.Host, startUri.Host)) continue;   // только свой сайт
+
+                string clean = u.GetLeftPart(UriPartial.Path);
+                if (FileExtRx.IsMatch(clean)) continue;
+                if (result.Contains(clean)) continue;
+                if (clean.TrimEnd('/') == _startUrl.TrimEnd('/')) continue;           // стартовую уже разобрали
+
+                string text = TextNormalizer.Normalize(l.T);
+                string path = Uri.UnescapeDataString(u.AbsolutePath).ToLowerInvariant();
+
+                foreach (var (kind, rx) in FormPageKinds)
+                {
+                    if (!rx.IsMatch(text) && !rx.IsMatch(path)) continue;
+
+                    perKind.TryGetValue(kind, out int n);
+                    if (n >= 2) break;                  // не больше двух страниц каждого вида
+
+                    perKind[kind] = n + 1;
+                    result.Add(clean);
+                    break;
+                }
+            }
+            return result;
         }
         public async Task<bool> FindLoginAsync() {
             
@@ -323,6 +428,7 @@ namespace PdnAudit.Core.Services {
             await page.EvaluateAsync("window.scrollTo(0, document.body.scrollHeight)");
             await page.WaitForTimeoutAsync(3000);
         }
+
         public async Task<(Document PrivacyDocument, Document ConsentDocument)> GetPdnDocuments() {
             var (privacyUrl, consentUrl) = await FindDocumentsLinks();
 
@@ -460,7 +566,109 @@ namespace PdnAudit.Core.Services {
         .Select(x => x.link)
         .ToList();
         }
-        
+
+        public async Task<OperatorInfo> GetOperatorInfoAsync(string? policyUrl) {
+            var info = new OperatorInfo();
+            var start = new Uri(page.Url);
+
+            // 1. Текущая страница: сначала футер, потом всё остальное
+            await ExtractOperatorFromPageAsync(page, info);
+
+            // 2. Страницы «Контакты», «Реквизиты», «О компании»
+            var urls = await FindContactPagesAsync(start);
+            if (!string.IsNullOrEmpty(policyUrl)) urls.Add(policyUrl);   // 3. Сама политика
+
+            foreach (var url in urls.Distinct().Take(4))
+            {
+                // ИСПРАВЛЕНИЕ: Создаем НОВЫЙ контекст и новую страницу в нем
+                var newContext = await browser.NewContextAsync();
+                var p = await newContext.NewPageAsync();
+
+                try
+                {
+                    await p.GotoAsync(url, new()
+                    {
+                        WaitUntil = WaitUntilState.Commit,
+                        Timeout = 45000
+                    });
+                    await p.WaitForTimeoutAsync(1000);
+                    await ExtractOperatorFromPageAsync(p, info);
+                }
+                catch (PlaywrightException ex)
+                {
+                    Debug.WriteLine($"CONTACTS: страница {url} не открылась: {ex.Message}");
+                }
+                finally
+                {
+                    // Обязательно закрываем контекст, чтобы не копить память
+                    await newContext.CloseAsync();
+                }
+            }
+            return info;
+        }
+
+        private async Task ExtractOperatorFromPageAsync(IPage p, OperatorInfo info) {
+            await p.EvaluateAsync("window.scrollTo(0, document.body.scrollHeight)");
+            await p.WaitForTimeoutAsync(500);
+
+            string footer = string.Join("\n", await p.Locator("footer").AllInnerTextsAsync());
+            OperatorInfoExtractor.Extract(footer, p.Url, info);
+
+            string body = await p.InnerTextAsync("body");
+            OperatorInfoExtractor.Extract(body, p.Url, info);
+
+            // mailto: и tel: ссылки
+            var hrefs = await p.EvaluateAsync<string[]>("""
+        () => [...document.querySelectorAll('a[href^="mailto:"], a[href^="tel:"]')]
+              .map(a => a.getAttribute('href'))
+        """);
+            foreach (var h in hrefs ?? Array.Empty<string>())
+            {
+                if (info.Email == null && h.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase))
+                { info.Email = h[7..].Split('?')[0]; info.Sources["Email"] = p.Url; }
+                if (info.Phone == null && h.StartsWith("tel:", StringComparison.OrdinalIgnoreCase))
+                { info.Phone = h[4..]; info.Sources["Телефон"] = p.Url; }
+            }
+        }
+
+        private async Task<List<string>> FindContactPagesAsync(Uri start) {
+            var result = new List<string>();
+            string json = "";
+
+            // 1. Оборачиваем EvaluateAsync в try-catch, чтобы программа не висла на мертвой странице
+            try
+            {
+                json = await page.EvaluateAsync<string>("""
+            () => JSON.stringify([...document.querySelectorAll('a[href]')]
+                  .map(a => ({ t: a.innerText || '', h: a.href })))
+            """);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Не удалось получить ссылки для контактов: {ex.Message}");
+                return result; // Возвращаем пустой список, идем дальше по коду
+            }
+
+            var links = JsonSerializer.Deserialize<List<LinkDto>>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+
+            var rx = new Regex(@"контакт|реквизит|о\s+компании|о\s+нас|about|contact|requisite", RegexOptions.IgnoreCase);
+
+            foreach (var l in links)
+            {
+                if (!Uri.TryCreate(l.H, UriKind.Absolute, out var u)) continue;
+                if (!TrackerDictionary.IsSameSite(u.Host, start.Host)) continue;
+                if (rx.IsMatch(TextNormalizer.Normalize(l.T)) || rx.IsMatch(u.AbsolutePath))
+                    result.Add(u.GetLeftPart(UriPartial.Path));
+            }
+
+            return result.Distinct().Take(3).ToList();
+        }
+        public async Task CloseAsync() {
+            if (browser != null) await browser.CloseAsync();
+            if (playwright != null) playwright.Dispose(); // У IPlaywright метод Dispose (не Async)
+        }
+        public Task<TrackingResult> GetTrackingAsync(string url) => new TrackingAnalyzer(browser).AnalyzeAsync(url);
     }
 }
 //https://www.citilink.ru/ https://demoqa.com/automation-practice-form

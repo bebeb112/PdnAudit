@@ -9,8 +9,8 @@
     <StackPanel Orientation="Vertical">
         <TextBlock x:Name="PrivacyDocumentTextBlock" Text="Политика" FontSize="30" Padding="10"></TextBlock>
         <TextBlock x:Name="ConsentDocumentTextBlock" Text="Согласие" FontSize="30" Padding="10"></TextBlock>
-        <TextBlock x:Name="DocumentLinksAmountTextBlock" Text="Количество" FontSize="30" Padding="10"></TextBlock>
-        <TextBlock x:Name="FormsAmountTextBlock" Text="Количество форм на странице: " FontSize="30"></TextBlock>
-        <TextBlock x:Name="ResultsTextBlock" Text="Замечания" FontSize="30"></TextBlock>
+        <TextBlock x:Name="DocumentLinksAmountTextBlock" Text="Критические" FontSize="30" Padding="10"></TextBlock>
+        <TextBlock x:Name="FormsAmountTextBlock" Text="Замечания" FontSize="30"></TextBlock>
+        <TextBlock x:Name="ResultsTextBlock" Text="Прошло" FontSize="30"></TextBlock>
     </StackPanel>
 </Window>
