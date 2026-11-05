@@ -6,6 +6,9 @@
         xmlns:local="clr-namespace:PdnAudit"
         mc:Ignorable="d"
         Title="MainWindow" Height="450" Width="800">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" 
+                  HorizontalScrollBarVisibility="Auto" 
+                  Padding="10">
     <StackPanel Orientation="Vertical">
         <TextBlock x:Name="PrivacyDocumentTextBlock" Text="Политика" FontSize="30" Padding="10"></TextBlock>
         <TextBlock x:Name="ConsentDocumentTextBlock" Text="Согласие" FontSize="30" Padding="10"></TextBlock>
@@ -13,4 +16,5 @@
         <TextBlock x:Name="FormsAmountTextBlock" Text="Замечания" FontSize="30"></TextBlock>
         <TextBlock x:Name="ResultsTextBlock" Text="Прошло" FontSize="30"></TextBlock>
     </StackPanel>
+    </ScrollViewer>
 </Window>

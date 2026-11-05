@@ -38,5 +38,13 @@ namespace PdnAudit.Core.Services.Extractors {
             string result = whiteSpaceRegex.Replace(sb.ToString(), " ").Trim();
             return result.ToLowerInvariant();
         }
+        public static string CleanJsonFromAI(string aiResponse) {
+            var match = Regex.Match(aiResponse, @"\{.*\}", RegexOptions.Singleline);
+            if (match.Success)
+            {
+                return match.Value;
+            }
+            return aiResponse;
+        }
     }
 }

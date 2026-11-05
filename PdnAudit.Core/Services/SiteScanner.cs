@@ -440,11 +440,55 @@ namespace PdnAudit.Core.Services {
             privacyDocument.Url = privacyUrl;
             privacyDocument.DocumentType = "Политика обработки персональных данных";
 
+            // Если ссылка найдена, сразу скачиваем текст
+            if (!string.IsNullOrEmpty(privacyUrl))
+            {
+                privacyDocument.FullText = await GetTextFromUrlAsync(privacyUrl);
+            }
+
             Document consentDocument = new Document();
             consentDocument.Url = consentUrl;
             consentDocument.DocumentType = "Согласие на обработку персональных данных";
 
+            // Если ссылка найдена, сразу скачиваем текст
+            if (!string.IsNullOrEmpty(consentUrl))
+            {
+                consentDocument.FullText = await GetTextFromUrlAsync(consentUrl);
+            }
+
             return (privacyDocument, consentDocument);
+        }
+        private async Task<string> GetTextFromUrlAsync(string url) {
+            // Создаем изолированный контекст, чтобы не влиять на основную страницу page
+            var context = await browser.NewContextAsync();
+            var p = await context.NewPageAsync();
+
+            try
+            {
+                // Переходим по ссылке
+                await p.GotoAsync(url, new PageGotoOptions
+                {
+                    WaitUntil = WaitUntilState.Commit, // Ждем начала загрузки, чтобы не зависнуть
+                    Timeout = 30000
+                });
+
+                // Ждем, чтобы текст прогрузился (особенно если он рендерится через JS)
+                await p.WaitForTimeoutAsync(2000);
+
+                // Забираем весь видимый текст
+                string text = await p.Locator("body").InnerTextAsync();
+                return text;
+            }
+            catch (PlaywrightException ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Ошибка загрузки текста по ссылке {url}: {ex.Message}");
+                return string.Empty; // Если не удалось, возвращаем пустоту
+            }
+            finally
+            {
+                // Обязательно закрываем контекст, чтобы не копить память
+                await context.CloseAsync();
+            }
         }
         private async Task<(string? PrivacyUrl, string? ConsentUrl)> FindDocumentsLinks() {
             var privacyRegex = new Regex(
