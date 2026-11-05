@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace PdnAudit.Core.Models {
+namespace PdnAudit.Core.Models.Tracking {
     public class CookieInfo {
         public string Name { get; set; } = "";
         public string Domain { get; set; } = "";

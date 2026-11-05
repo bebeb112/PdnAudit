@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace PdnAudit.Core.Services {
+namespace PdnAudit.Core.Services.Rules {
     public class FormRules {
         public static List<CheckResult> CheckForms(List<FormInfo> forms) {
 

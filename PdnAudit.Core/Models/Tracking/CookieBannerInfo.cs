@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace PdnAudit.Core.Models {
+namespace PdnAudit.Core.Models.Tracking {
     public class CookieBannerInfo {
         public bool Found { get; set; }
         public string Text { get; set; } = "";

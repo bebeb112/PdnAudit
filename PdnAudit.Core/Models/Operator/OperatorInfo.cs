@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace PdnAudit.Core.Models {
+namespace PdnAudit.Core.Models.Operator {
     public class OperatorInfo {
         public string? Name { get; set; }
         public string? INN { get; set; }

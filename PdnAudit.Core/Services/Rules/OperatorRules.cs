@@ -1,11 +1,12 @@
 ﻿using PdnAudit.Core.Models;
+using PdnAudit.Core.Models.Operator;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace PdnAudit.Core.Services {
+namespace PdnAudit.Core.Services.Rules {
     public static class OperatorRules {
         private const string Cat = "Информация об операторе";
 

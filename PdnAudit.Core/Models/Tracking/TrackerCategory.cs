@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace PdnAudit.Core.Models {
+namespace PdnAudit.Core.Models.Tracking {
     public static class TrackerCategory {
         public const string Analytics = "Аналитика";
         public const string Ads = "Реклама / пиксели";

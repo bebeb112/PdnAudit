@@ -5,7 +5,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-namespace PdnAudit.Core.Services {
+namespace PdnAudit.Core.Services.Extractors {
     public class TextNormalizer {
         private static readonly char[] invisibleChars =
         {

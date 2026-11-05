@@ -1,5 +1,6 @@
 ﻿using Microsoft.Playwright;
-using PdnAudit.Core.Models;
+using PdnAudit.Core.Models.Tracking;
+using PdnAudit.Core.Services.Dictionaries;
 using System;
 using System.Collections.Generic;
 using System.Linq;

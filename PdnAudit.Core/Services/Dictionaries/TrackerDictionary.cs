@@ -1,11 +1,11 @@
-﻿using PdnAudit.Core.Models;
+﻿using PdnAudit.Core.Models.Tracking;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace PdnAudit.Core.Services {
+namespace PdnAudit.Core.Services.Dictionaries {
     public record TrackerRule(string Pattern, string Name, string Category, bool IsForeign);
     public class TrackerDictionary {
         public static readonly TrackerRule[] Domains =

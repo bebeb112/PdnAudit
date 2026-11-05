@@ -1,5 +1,5 @@
 ﻿using Microsoft.Playwright;
-using PdnAudit.Core.Models;
+using PdnAudit.Core.Models.Operator;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,7 +8,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-namespace PdnAudit.Core.Services {
+namespace PdnAudit.Core.Services.Extractors {
     public class OperatorInfoExtractor {
         private const RegexOptions options = RegexOptions.Compiled | RegexOptions.IgnoreCase;
         private static readonly Regex InnRx = new(
@@ -39,7 +39,7 @@ namespace PdnAudit.Core.Services {
                 {
                     string inn = m.Groups[1].Value;
                     bool valid = IsInnValid(inn);
-                    if (info.INN == null || (valid && !info.IsINNValid))
+                    if (info.INN == null || valid && !info.IsINNValid)
                     {
                         info.INN = inn;
                         info.IsINNValid = valid;

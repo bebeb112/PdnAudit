@@ -1,11 +1,12 @@
 ﻿using PdnAudit.Core.Models;
+using PdnAudit.Core.Models.Tracking;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace PdnAudit.Core.Services {
+namespace PdnAudit.Core.Services.Rules {
     public class TrackingRules {
         private const string Cat = "Cookies и аналитика";
 
