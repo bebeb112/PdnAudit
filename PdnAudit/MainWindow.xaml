@@ -84,5 +84,16 @@
             <Button Grid.Row="3" x:Name="GenerateReportButton" Content="Сформировать отчет" 
                 HorizontalAlignment="Right" Width="200" Height="40" 
                 Margin="15,0,15,15" Click="GenerateReportButton_Click"/>
+
+        <!-- 5. Загрузка -->
+        <Grid x:Name="LoadingOverlay" Background="#80000000" Visibility="Collapsed" Grid.RowSpan="4">
+            <Border Background="White" CornerRadius="10" Padding="30" HorizontalAlignment="Center" VerticalAlignment="Center" Width="400">
+                <StackPanel>
+                    <TextBlock Text="Идет сканирование сайта..." FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,15"/>
+                    <ProgressBar IsIndeterminate="True" Height="10" Foreground="#4CAF50" Margin="0,0,0,15"/>
+                    <TextBlock x:Name="LoadingStatusText" Text="Запуск браузера..." FontSize="14" Foreground="Gray" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
+                </StackPanel>
+            </Border>
         </Grid>
+    </Grid>
 </Window>

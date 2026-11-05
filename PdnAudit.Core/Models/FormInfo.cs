@@ -26,7 +26,7 @@ namespace PdnAudit.Core.Models {
 
                 foreach (var field in this.Fields)
                 {
-                    // 1. Проверяем тип поля (самый надежный способ)
+                    // 1. Проверяем тип поля
                     if (field.Type == "email" || field.Type == "tel" || field.Type == "password")
                     {
                         return true;

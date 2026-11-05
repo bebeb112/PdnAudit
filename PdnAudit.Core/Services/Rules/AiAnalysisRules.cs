@@ -9,62 +9,26 @@ namespace PdnAudit.Core.Services.Rules {
     public class AiAnalysisRules {
         public static List<CheckResult> Check(AiAnalysisResult aiResult) {
             var results = new List<CheckResult>();
+            const string Cat = "Анализ Политики (ИИ)";
 
             if (aiResult == null)
             {
-                results.Add(new CheckResult
-                {
-                    Severity = Severity.Info,
-                    Title = "Анализ текста Политики с помощью ИИ не выполнен"
-                });
+                results.Add(CheckResult.Create(Severity.Info, Cat, "Анализ текста Политики с помощью ИИ не выполнен", "", ""));
                 return results;
             }
 
-            // 1. Проверка целей обработки
             if (!aiResult.HasPurposes)
-            {
-                results.Add(new CheckResult
-                {
-                    Severity = Severity.Warning,
-                    Title = "ИИ: В тексте Политики не указаны цели обработки ПДн"
-                });
-            }
+                results.Add(CheckResult.Create(Severity.Warning, Cat, "ИИ: В тексте Политики не указаны цели обработки ПДн", "ст. 5, 18.1 152-ФЗ", "Указать конкретные цели сбора данных"));
             else
-            {
-                results.Add(new CheckResult
-                {
-                    Severity = Severity.Passed,
-                    Title = "ИИ: Цели обработки ПДн указаны"
-                });
-            }
+                results.Add(CheckResult.Create(Severity.Passed, Cat, "ИИ: Цели обработки ПДн указаны", "", ""));
 
-            // 2. Проверка сроков хранения
             if (!aiResult.HasRetention)
-            {
-                results.Add(new CheckResult
-                {
-                    Severity = Severity.Warning,
-                    Title = "ИИ: В тексте Политики не указаны сроки хранения ПДн"
-                });
-            }
+                results.Add(CheckResult.Create(Severity.Warning, Cat, "ИИ: В тексте Политики не указаны сроки хранения ПДн", "ст. 5, 21 152-ФЗ", "Прописать сроки хранения или условия их определения"));
             else
-            {
-                results.Add(new CheckResult
-                {
-                    Severity = Severity.Passed,
-                    Title = "ИИ: Сроки хранения ПДн указаны"
-                });
-            }
+                results.Add(CheckResult.Create(Severity.Passed, Cat, "ИИ: Сроки хранения ПДн указаны", "", ""));
 
-            // 3. Проверка передачи третьим лицам
             if (aiResult.HasThirdParty)
-            {
-                results.Add(new CheckResult
-                {
-                    Severity = Severity.Info,
-                    Title = "ИИ: В Политике указана передача данных третьим лицам"
-                });
-            }
+                results.Add(CheckResult.Create(Severity.Info, Cat, "ИИ: В Политике указана передача данных третьим лицам", "ст. 6 152-ФЗ", "Убедиться, что перечень третьих лиц актуален"));
 
             return results;
         }

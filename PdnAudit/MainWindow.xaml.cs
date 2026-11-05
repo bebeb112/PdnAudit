@@ -1,4 +1,5 @@
 ﻿using Microsoft.Playwright;
+using Microsoft.Win32;
 using PdnAudit.Core.Models;
 using PdnAudit.Core.Models.Tracking;
 using PdnAudit.Core.Services;
@@ -30,6 +31,7 @@ namespace PdnAudit
         private IPage page;
         private IBrowser browser;
         private IPlaywright playwright;
+        private List<CheckResult> _lastResults = new List<CheckResult>();
         public MainWindow() {
             InitializeComponent();
         }
@@ -92,6 +94,7 @@ namespace PdnAudit
                         all.Add(new CheckResult { Severity = Severity.Info, Title = $"Ошибка ИИ: {ex.Message}" });
                     }
                 }
+                _lastResults = all;
 
                 var critical = all.Where(r => r.Severity == Severity.Critical).GroupBy(c => c.Title).Select(g => g.First()).Select(r => new ReportLine { Title = r.Title }).ToList();
                 var warnings = all.Where(r => r.Severity == Severity.Warning || r.Severity == Severity.Info).GroupBy(c => c.Title).Select(g => g.First()).Select(r => new ReportLine { Title = r.Title }).ToList();
@@ -112,8 +115,44 @@ namespace PdnAudit
                 CheckButton.Content = "Проверить";
             }
         }
-        private void GenerateReportButton_Click(object sender, RoutedEventArgs e) {
-            MessageBox.Show("Здесь будет генерация HTML или PDF отчета. (В разработке)", "Отчет");
+        private async void GenerateReportButton_Click(object sender, RoutedEventArgs e) {
+            if (_lastResults == null || !_lastResults.Any())
+            {
+                MessageBox.Show("Сначала запустите проверку сайта.", "Нет данных");
+                return;
+            }
+
+            var saveFileDialog = new SaveFileDialog
+            {
+                Filter = "PDF файл (*.pdf)|*.pdf",
+                FileName = $"PdnAudit_Report_{DateTime.Now:yyyyMMdd}.pdf"
+            };
+
+            if (saveFileDialog.ShowDialog() == true)
+            {
+                try
+                {
+                    GenerateReportButton.IsEnabled = false;
+                    GenerateReportButton.Content = "Генерация...";
+
+                    var reporter = new ReportGenerator();
+                    await reporter.GeneratePdfReportAsync(_lastResults, UrlTextBox.Text, saveFileDialog.FileName);
+
+                    MessageBox.Show($"Отчет успешно сохранен:\n{saveFileDialog.FileName}", "Успех");
+
+                    // Опционально: открыть PDF сразу
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(saveFileDialog.FileName) { UseShellExecute = true });
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Ошибка генерации отчета: {ex.Message}", "Ошибка");
+                }
+                finally
+                {
+                    GenerateReportButton.IsEnabled = true;
+                    GenerateReportButton.Content = "Сформировать отчет";
+                }
+            }
         }
     }
 }
