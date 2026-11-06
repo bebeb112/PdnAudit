@@ -1,24 +1,29 @@
 ﻿using Microsoft.Playwright;
 using PdnAudit.Core.Models.Tracking;
 using PdnAudit.Core.Services.Dictionaries;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
 
 namespace PdnAudit.Core.Services.Analyzers {
+    /// <summary>
+    /// Анализатор трекеров и файлов cookie.
+    /// Выполняет два прохода по странице (до и после нажатия «Принять cookies»), чтобы выявить скрытые сторонние сервисы.
+    /// </summary>
     public class TrackingAnalyzer {
         private readonly IBrowser _browser;
         public TrackingAnalyzer(IBrowser browser) => _browser = browser;
 
+        /// <summary>
+        /// Запускает два прохода сканирования: без согласия и с согласием.
+        /// </summary>
         public async Task<TrackingResult> AnalyzeAsync(string url) => new()
         {
             Before = await CollectAsync(url, acceptConsent: false),
             After = await CollectAsync(url, acceptConsent: true)
         };
 
+        /// <summary>
+        /// Собирает данные о сетевых запросах и cookies на одном из этапов (до или после согласия).
+        /// </summary>
         public async Task<TrackingPhase> CollectAsync(string url, bool acceptConsent) {
             var phase = new TrackingPhase { AcceptedConsent = acceptConsent };
             string siteHost = new Uri(url).Host;
@@ -114,6 +119,10 @@ namespace PdnAudit.Core.Services.Analyzers {
             }
         }
 
+        /// <summary>
+        /// Анализирует DOM-дерево страницы для поиска баннера cookies.
+        /// Находит кнопки «Принять», «Отклонить», «Настроить» и помечает кнопку «Принять» атрибутом для C#.
+        /// </summary>
         private static async Task<CookieBannerInfo> DetectBannerAsync(IPage page) {
             string json = await page.EvaluateAsync<string>("""
         () => {

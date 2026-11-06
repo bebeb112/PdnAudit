@@ -4,31 +4,16 @@ using PdnAudit.Core.Models;
 using PdnAudit.Core.Models.Results;
 using PdnAudit.Core.Models.Scanning;
 using PdnAudit.Core.Models.Tracking;
-using PdnAudit.Core.Services;
 using PdnAudit.Core.Services.Analyzers;
-using PdnAudit.Core.Services.Extractors;
-using PdnAudit.Core.Services.Rules;
-using System.Diagnostics;
-using System.DirectoryServices.ActiveDirectory;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Animation;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-using static System.Net.Mime.MediaTypeNames;
 using PdnAudit.Core.Services.Generators;
+using PdnAudit.Core.Services.Rules;
+using System.Windows;
 
 namespace PdnAudit
 {
     /// <summary>
-    /// Interaction logic for MainWindow.xaml
+    /// Главное окно приложения (WPF).
+    /// Связывает работу сканера (SiteScanner), правил проверки (Rules) и генератора отчетов (ReportGenerator).
     /// </summary>
     public partial class MainWindow : Window
     {
@@ -39,6 +24,10 @@ namespace PdnAudit
         public MainWindow() {
             InitializeComponent();
         }
+        /// <summary>
+        /// Обработчик нажатия кнопки "Проверить".
+        /// Запускает сканирование сайта, анализ документов и ИИ, после чего отображает результаты в интерфейсе.
+        /// </summary>
         private async void CheckButton_Click(object sender, RoutedEventArgs e) {
             string url = UrlTextBox.Text.Trim();
             if (string.IsNullOrEmpty(url))
@@ -145,6 +134,11 @@ namespace PdnAudit
                 LoadingOverlay.Visibility = Visibility.Collapsed;
             }
         }
+        
+        /// <summary>
+        /// Обработчик нажатия кнопки "Сформировать отчет".
+        /// Открывает диалог сохранения файла и вызывает генератор PDF-отчета на основе последних результатов проверки.
+        /// </summary>
         private async void GenerateReportButton_Click(object sender, RoutedEventArgs e) {
             if (_lastResults == null || !_lastResults.Any())
             {
@@ -170,7 +164,6 @@ namespace PdnAudit
 
                     MessageBox.Show($"Отчет успешно сохранен:\n{saveFileDialog.FileName}", "Успех");
 
-                    // Опционально: открыть PDF сразу
                     System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(saveFileDialog.FileName) { UseShellExecute = true });
                 }
                 catch (Exception ex)

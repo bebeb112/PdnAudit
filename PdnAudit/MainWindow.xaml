@@ -6,86 +6,78 @@
         xmlns:local="clr-namespace:PdnAudit"
         mc:Ignorable="d"
         Title="MainWindow" Height="450" Width="800">
+    <!-- Главное окно приложения для ввода URL и отображения отчета -->
     <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <!-- Шапка -->
-                <RowDefinition Height="Auto"/>
-                <!-- Поле ввода -->
-                <RowDefinition Height="*"/>
-                <!-- Результаты -->
-                <RowDefinition Height="Auto"/>
-                <!-- Кнопка внизу -->
-            </Grid.RowDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
 
-            <!-- 1. Шапка -->
-            <Border Grid.Row="0" Background="#808080" Padding="10">
-                <TextBlock Text="Проверка на соответствие 152-ФЗ" 
-                       Foreground="White" FontSize="20" FontStyle="Italic" 
-                       HorizontalAlignment="Center" FontWeight="Bold"/>
-            </Border>
+        <!-- Шапка приложения -->
+        <Border Grid.Row="0" Background="#808080" Padding="10">
+            <TextBlock Text="Проверка на соответствие 152-ФЗ" 
+           Foreground="White" FontSize="20" FontStyle="Italic" 
+           HorizontalAlignment="Center" FontWeight="Bold"/>
+        </Border>
+        <!-- Поле ввода URL и кнопка "Проверить" -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="15">
+            <TextBlock Text="Введите адрес ссылки" FontSize="16" FontStyle="Italic" 
+           VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <TextBox x:Name="UrlTextBox" Width="400" Height="30" FontSize="14" 
+         Padding="5" VerticalContentAlignment="Center" />
+            <Button x:Name="CheckButton" Content="Проверить" Width="100" Height="30" 
+        Margin="10,0,0,0" Click="CheckButton_Click"/>
+        </StackPanel>
+        <!-- Область результатов -->
+        <Border Grid.Row="2" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="5" Margin="15,0,15,10" Padding="10">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
 
-            <!-- 2. Поле ввода и кнопка "Проверить" -->
-            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="15">
-                <TextBlock Text="Введите адрес ссылки" FontSize="16" FontStyle="Italic" 
-                       VerticalAlignment="Center" Margin="0,0,10,0"/>
-                <TextBox x:Name="UrlTextBox" Width="400" Height="30" FontSize="14" 
-                     Padding="5" VerticalContentAlignment="Center" />
-                <Button x:Name="CheckButton" Content="Проверить" Width="100" Height="30" 
-                    Margin="10,0,0,0" Click="CheckButton_Click"/>
-            </StackPanel>
+                    <!-- Блок КРИТИЧНО -->
+                    <TextBlock Text="Критические нарушения" FontSize="18" FontStyle="Italic" FontWeight="Bold" Foreground="#D32F2F" Margin="0,5,0,5"/>
+                    <ItemsControl x:Name="CriticalList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="#FFEBEE" BorderBrush="#D32F2F" BorderThickness="4,0,0,0" Margin="0,2" Padding="10">
+                                    <TextBlock Text="{Binding Title}" TextWrapping="Wrap" Foreground="#B71C1C"/>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
 
-            <!-- 3. Область результатов -->
-            <Border Grid.Row="2" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="5" Margin="15,0,15,10" Padding="10">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel>
+                    <!-- Блок ЗАМЕЧАНИЯ -->
+                    <TextBlock Text="Замечания" FontSize="18" FontStyle="Italic" FontWeight="Bold" Foreground="#F57C00" Margin="0,15,0,5"/>
+                    <ItemsControl x:Name="WarningList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="#FFF3E0" BorderBrush="#F57C00" BorderThickness="4,0,0,0" Margin="0,2" Padding="10">
+                                    <TextBlock Text="{Binding Title}" TextWrapping="Wrap" Foreground="#E65100"/>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
 
-                        <!-- Блок КРИТИЧНО -->
-                        <TextBlock Text="Критические нарушения" FontSize="18" FontStyle="Italic" FontWeight="Bold" Foreground="#D32F2F" Margin="0,5,0,5"/>
-                        <ItemsControl x:Name="CriticalList">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="#FFEBEE" BorderBrush="#D32F2F" BorderThickness="4,0,0,0" Margin="0,2" Padding="10">
-                                        <TextBlock Text="{Binding Title}" TextWrapping="Wrap" Foreground="#B71C1C"/>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                    <!-- Блок ОК -->
+                    <TextBlock Text="Успешно пройдено" FontSize="18" FontStyle="Italic" FontWeight="Bold" Foreground="#388E3C" Margin="0,15,0,5"/>
+                    <ItemsControl x:Name="PassedList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="#E8F5E9" BorderBrush="#388E3C" BorderThickness="4,0,0,0" Margin="0,2" Padding="10">
+                                    <TextBlock Text="{Binding Title}" TextWrapping="Wrap" Foreground="#1B5E20"/>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
 
-                        <!-- Блок ЗАМЕЧАНИЯ -->
-                        <TextBlock Text="Замечания" FontSize="18" FontStyle="Italic" FontWeight="Bold" Foreground="#F57C00" Margin="0,15,0,5"/>
-                        <ItemsControl x:Name="WarningList">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="#FFF3E0" BorderBrush="#F57C00" BorderThickness="4,0,0,0" Margin="0,2" Padding="10">
-                                        <TextBlock Text="{Binding Title}" TextWrapping="Wrap" Foreground="#E65100"/>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+        <!-- Кнопка "Сформировать отчет" -->
+        <Button Grid.Row="3" x:Name="GenerateReportButton" Content="Сформировать отчет"  HorizontalAlignment="Right" Width="200" Height="40"  Margin="15,0,15,15" Click="GenerateReportButton_Click"/>
 
-                        <!-- Блок ОК -->
-                        <TextBlock Text="Успешно пройдено" FontSize="18" FontStyle="Italic" FontWeight="Bold" Foreground="#388E3C" Margin="0,15,0,5"/>
-                        <ItemsControl x:Name="PassedList">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="#E8F5E9" BorderBrush="#388E3C" BorderThickness="4,0,0,0" Margin="0,2" Padding="10">
-                                        <TextBlock Text="{Binding Title}" TextWrapping="Wrap" Foreground="#1B5E20"/>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                    </StackPanel>
-                </ScrollViewer>
-            </Border>
-
-            <!-- 4. Кнопка "Сформировать отчет" -->
-            <Button Grid.Row="3" x:Name="GenerateReportButton" Content="Сформировать отчет" 
-                HorizontalAlignment="Right" Width="200" Height="40" 
-                Margin="15,0,15,15" Click="GenerateReportButton_Click"/>
-
-        <!-- 5. Загрузка -->
+        <!-- Оверлей загрузки -->
         <Grid x:Name="LoadingOverlay" Background="#80000000" Visibility="Collapsed" Grid.RowSpan="4">
             <Border Background="White" CornerRadius="10" Padding="30" HorizontalAlignment="Center" VerticalAlignment="Center" Width="400">
                 <StackPanel>

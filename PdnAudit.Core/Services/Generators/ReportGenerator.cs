@@ -1,13 +1,17 @@
 ﻿using Microsoft.Playwright;
 using PdnAudit.Core.Models.Results;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace PdnAudit.Core.Services.Generators {
+    /// <summary>
+    /// Генератор PDF-отчетов.
+    /// Формирует HTML-разметку на основе результатов проверок и конвертирует её в PDF с помощью Playwright.
+    /// </summary>
     public class ReportGenerator {
+
+        /// <summary>
+        /// Главный метод генерации отчета. Создает HTML, сохраняет во временный файл и рендерит его в PDF.
+        /// </summary>
         public async Task GeneratePdfReportAsync(List<CheckResult> results, string siteUrl, string outputPath) {
             // 1. Генерируем HTML-код отчета
             string html = BuildHtml(results, siteUrl);
@@ -37,6 +41,9 @@ namespace PdnAudit.Core.Services.Generators {
             File.Delete(tempHtmlPath);
         }
 
+        /// <summary>
+        /// Формирует полный HTML-документ с CSS-стилями, разбивая результаты на три блока (Критично, Замечания, Пройдено).
+        /// </summary>
         private string BuildHtml(List<CheckResult> results, string siteUrl) {
             var critical = results.Where(r => r.Severity == Severity.Critical).ToList();
             var warnings = results.Where(r => r.Severity == Severity.Warning || r.Severity == Severity.Info).ToList();
@@ -92,6 +99,9 @@ namespace PdnAudit.Core.Services.Generators {
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Формирует HTML-блок для одной проверки (с цветовой индикацией, ссылкой на закон и рекомендацией).
+        /// </summary>
         private string BuildItemHtml(CheckResult item, string cssClass) {
             string recHtml = string.IsNullOrEmpty(item.Recommendation) ? "" : $"<div class='item-rec'><strong>Рекомендация:</strong> {item.Recommendation}</div>";
             string lawHtml = string.IsNullOrEmpty(item.LawReference) ? "" : $"<div class='item-law'><strong>Норма закона:</strong> {item.LawReference}</div>";

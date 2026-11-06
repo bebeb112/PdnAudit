@@ -1,14 +1,16 @@
 ﻿using PdnAudit.Core.Models.Results;
 using PdnAudit.Core.Models.Scanning;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace PdnAudit.Core.Services.Rules {
+    /// <summary>
+    /// Правила проверки форм на соответствие 152-ФЗ.
+    /// Анализирует наличие чекбоксов согласия, ссылок на Политику и проверяет, куда отправляются данные.
+    /// </summary>
     public class FormRules {
+
+        /// <summary>
+        /// Проверяет список найденных форм и возвращает список нарушений/успехов.
+        /// </summary>
         public static List<CheckResult> CheckForms(List<FormInfo> forms) {
             var results = new List<CheckResult>();
             const string Cat = "Формы и сбор данных";
@@ -64,6 +66,9 @@ namespace PdnAudit.Core.Services.Rules {
             return results;
         }
 
+        /// <summary>
+        /// Проверяет, отправляет ли форма данные на другой домен (не совпадающий с текущим сайтом).
+        /// </summary>
         private static bool IsExternal(FormInfo form) {
             if (!System.Uri.TryCreate(form.ActionUrl, System.UriKind.Absolute, out var action)) return false;
             if (!System.Uri.TryCreate(form.BasePageUrl, System.UriKind.Absolute, out var current)) return false;

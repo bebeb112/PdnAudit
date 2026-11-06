@@ -1,16 +1,16 @@
 ﻿using PdnAudit.Core.Models.Results;
 using PdnAudit.Core.Services.Extractors;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 
 namespace PdnAudit.Core.Services.Analyzers {
+    /// <summary>
+    /// Сервис для взаимодействия с языковой моделью GigaChat (Сбер).
+    /// Отвечает за получение токена, отправку текста Политики на анализ и верификацию ответов ИИ.
+    /// </summary>
     public class AIAnalyzer {
-        //Я прекрасно понимаю, что так нельзя, но мне плевать на этот ключ, берите кто хотите
+        //Я прекрасно понимаю, что нельзя вот так хранить ключи, но мне плевать на этот ключ, берите кто хотите
         private static string authorizationKey = "MDFhMWFkMTAtY2M3Zi03N2M3LWI3ZTgtN2JhMTA2ODk1NjMzOmZhNjI4YWE5LTg1MGMtNDNjNS04NzEyLWZiZmFiNGJiYTgzNQ==";
         
         private static readonly JsonSerializerOptions JsonOpts = new()
@@ -19,6 +19,10 @@ namespace PdnAudit.Core.Services.Analyzers {
             PropertyNameCaseInsensitive = true
         };
 
+        /// <summary>
+        /// Получает временный access-токен для работы с API GigaChat.
+        /// Использует Basic-авторизацию по ключу.
+        /// </summary>
         public async Task<string> GetGigaChatTokenAsync() {
             //я понимаю, что не самая лучшая затея игнорировать сертификат, но и качать сертификат от минцифры не звучит хайпово
             var handler = new HttpClientHandler
@@ -48,6 +52,10 @@ namespace PdnAudit.Core.Services.Analyzers {
 
             return doc.RootElement.GetProperty("access_token").GetString();
         }
+        
+        /// <summary>
+        /// Отправляет текст Политики в GigaChat и просит вернуть JSON с оценкой по 8 ключевым пунктам 152-ФЗ.
+        /// </summary>
         public async Task<string> AnalyzeGigaChatAsync(string token, string policyDocumentText) {
             var handler = new HttpClientHandler
             {
@@ -104,6 +112,11 @@ namespace PdnAudit.Core.Services.Analyzers {
 
             return doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
         }
+
+        /// <summary>
+        /// Парсит JSON-ответ от ИИ и проверяет, не «галлюцинировал» ли он.
+        /// Если ИИ указал пункт как найденный, но цитаты нет в исходном тексте, ставит флаг Unverified.
+        /// </summary>
         public AiAnalysisResult ParseAndVerify(string rawResponse, string policyText) {
             AiAnalysisResult result;
             try
@@ -132,13 +145,16 @@ namespace PdnAudit.Core.Services.Analyzers {
             }
             return result;
         }
+       
         private static string Prep(string? s) => TextNormalizer.Normalize(Regex.Replace(s ?? "", "[«»\"“”„']", " "));
+        
         private static bool QuoteExists(string normPolicy, string q) {
             if (q.Length < 10) return false;
             var parts = q.Split(new[] { "...", "…" }, StringSplitOptions.RemoveEmptyEntries)
                          .Select(p => p.Trim()).Where(p => p.Length >= 10).ToList();
             return parts.Count > 0 && parts.All(p => normPolicy.Contains(p));
         }
+       
         private static bool FuzzyMatch(HashSet<string> policyWords, string q) {
             var words = q.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length > 3).ToList();
             if (words.Count < 6) return false;

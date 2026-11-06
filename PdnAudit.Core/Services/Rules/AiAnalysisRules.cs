@@ -1,13 +1,17 @@
 ﻿using PdnAudit.Core.Models.Results;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace PdnAudit.Core.Services.Rules {
+    /// <summary>
+    /// Правила оценки результатов интеллектуального анализа Политики обработки ПДн.
+    /// Преобразует ответы ИИ в структурированные результаты проверки с указанием норм закона и рекомендаций.
+    /// </summary>
     public class AiAnalysisRules {
+
         const string Cat = "Анализ Политики (ИИ)";
+
+        /// <summary>
+        /// Проверяет результаты ИИ и формирует список нарушений/успехов.
+        /// </summary>
         public static List<CheckResult> Check(AiAnalysisResult? aiResult, bool hasForeignTrackers) {
             var results = new List<CheckResult>();
 
@@ -57,6 +61,10 @@ namespace PdnAudit.Core.Services.Rules {
 
             return results;
         }
+
+        /// <summary>
+        /// Формирует текстовую сноску с цитатой или пометкой о необходимости ручной проверки.
+        /// </summary>
         private static string Note(AiItem item) {
             if (item.Found)
             {

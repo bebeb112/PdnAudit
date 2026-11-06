@@ -1,17 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-//Документы - Согласие на обработку персональных данных, Политика обработки персональных данных
-namespace PdnAudit.Core.Models.Scanning {
+﻿namespace PdnAudit.Core.Models.Scanning {
+    /// <summary>
+    /// Модель найденного юридического документа на сайте.
+    /// Хранит ссылку на документ, его тип и извлеченный текст для последующего анализа.
+    /// </summary>
     public class Document {
+        // Полный URL-адрес, по которому расположен документ
         public string Url { get; set; }
+
+        // Тип документа
         public string DocumentType { get; set; }
+
+        // Полный текст документа, извлеченный со страницы
         public string FullText { get; set; }
-        public bool HasINN { get; set; }
-        public bool HasPurposes { get; set; }
-        public bool HasRetentionPeriod { get; set; }
+
     }
 }

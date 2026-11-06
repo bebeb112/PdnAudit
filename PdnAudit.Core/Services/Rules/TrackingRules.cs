@@ -1,18 +1,24 @@
 ﻿using PdnAudit.Core.Models.Results;
 using PdnAudit.Core.Models.Tracking;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace PdnAudit.Core.Services.Rules {
+    /// <summary>
+    /// Правила анализа трекеров, cookies и признаков трансграничной передачи данных.
+    /// Оценивает, загружаются ли сторонние сервисы до согласия, есть ли баннер и куда уходят данные.
+    /// </summary>
     public class TrackingRules {
         private const string Cat = "Cookies и аналитика";
 
+
+        /// <summary>
+        /// Проверяет, относится ли категория к трекерам (аналитика или реклама).
+        /// </summary>
         private static bool IsTracker(string category) =>
             category == TrackerCategory.Analytics || category == TrackerCategory.Ads;
 
+        /// <summary>
+        /// Основной метод проверки. Сравнивает результаты двух этапов (до и после согласия) и формирует отчет.
+        /// </summary>
         public static List<CheckResult> Check(TrackingResult t) {
             var results = new List<CheckResult>();
             var before = t.Before;
@@ -82,7 +88,7 @@ namespace PdnAudit.Core.Services.Rules {
             }
             else if (anyTrackers)
             {
-                // Уже отражено в критическом пункте выше, отдельное замечание не дублируем
+                
             }
             else
             {
@@ -137,6 +143,9 @@ namespace PdnAudit.Core.Services.Rules {
             return results;
         }
 
+        /// <summary>
+        /// Обрезает строку до 200 символов для отображения в деталях.
+        /// </summary>
         private static string Short(string s) => s.Length <= 200 ? s : s[..200] + "...";
     }
 }

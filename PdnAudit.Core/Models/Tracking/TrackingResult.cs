@@ -1,12 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace PdnAudit.Core.Models.Tracking {
+﻿namespace PdnAudit.Core.Models.Tracking {
+    /// <summary>
+    /// Главная модель результатов анализа трекеров и cookies.
+    /// Содержит данные двух этапов: до нажатия кнопки согласия и после.
+    /// </summary>
     public class TrackingResult {
-        public TrackingPhase Before { get; set; } = new();   // до согласия
-        public TrackingPhase After { get; set; } = new();    // после нажатия «Принять»
+        // Результаты сбора данных до согласия пользователя (чистый контекст)
+        public TrackingPhase Before { get; set; } = new();
+
+        // Результаты сбора данных после нажатия кнопки «Принять» (повторный заход)
+        public TrackingPhase After { get; set; } = new();   
     }
 }

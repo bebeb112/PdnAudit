@@ -1,15 +1,18 @@
 ﻿using PdnAudit.Core.Models.Operator;
 using PdnAudit.Core.Models.Results;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace PdnAudit.Core.Services.Rules {
+    /// <summary>
+    /// Правила проверки информации об операторе персональных данных.
+    /// Оценивает наличие наименования, реквизитов (ИНН, ОГРН), адреса и контактов для обращений.
+    /// </summary>
     public static class OperatorRules {
+
         private const string Cat = "Информация об операторе";
 
+        /// <summary>
+        /// Проверяет заполненность реквизитов оператора и возвращает список нарушений/успехов.
+        /// </summary>
         public static List<CheckResult> Check(OperatorInfo op) {
             var results = new List<CheckResult>();
 
@@ -65,6 +68,9 @@ namespace PdnAudit.Core.Services.Rules {
             return results;
         }
 
+        /// <summary>
+        /// Вспомогательный метод для получения URL-источника, где было найдено поле.
+        /// </summary>
         private static string Src(OperatorInfo op, string key) =>
             op.Sources.TryGetValue(key, out var url) ? url : "-";
     }

@@ -4,23 +4,42 @@ using PdnAudit.Core.Models.Scanning;
 using PdnAudit.Core.Models.Tracking;
 using PdnAudit.Core.Services.Dictionaries;
 using PdnAudit.Core.Services.Extractors;
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 
 namespace PdnAudit.Core.Services.Analyzers {
+    /// <summary>
+    /// Главный сервис сканирования сайта.
+    /// Отвечает за загрузку страниц через Playwright, извлечение ссылок, анализ форм и поиск документов (Политики и Согласия).
+    /// </summary>
     public class SiteScanner {
         private IPage page;
         private IBrowser browser;
         private IPlaywright playwright;
         private int maxExtraPages = 6;
         private string _startUrl;
-        public int linksAmount { get; set; }
+        private record LinkDto(string T, string H);
+        private static readonly (string Kind, Regex Rx)[] FormPageKinds =
+{
+    ("Обратная связь", new Regex(@"контакт|обратн\w*\s+связ|связаться|заявк|заказать|звонок|feedback|contact|callback|request",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+    ("Авторизация", new Regex(@"\bвойти\b|\bвход\b|авториз|login|log-in|signin|sign-in|\bauth\b|личн\w*\s+кабинет|account",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+    ("Регистрация", new Regex(@"регистрац|зарегистр|register|signup|sign-up",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+    ("Заказ", new Regex(@"корзин|оформлен|cart|basket|checkout|order",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+    ("Подписка", new Regex(@"подпис|subscribe|newsletter",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+};
+
+        private static readonly Regex FileExtRx = new(@"\.(jpe?g|png|gif|svg|webp|pdf|docx?|xlsx?|zip|rar|mp4|mp3)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
+
+        // Скрипт для анализа форм (извлекает поля, чекбоксы и ссылки на Политику)
         private const string FormScript = """
 (form) => {
     const norm = (s) => (s || '')
@@ -147,24 +166,11 @@ namespace PdnAudit.Core.Services.Analyzers {
     return JSON.stringify(result);
 }
 """;
-        private record LinkDto(string T, string H);
-        private static readonly (string Kind, Regex Rx)[] FormPageKinds =
-{
-    ("Обратная связь", new Regex(@"контакт|обратн\w*\s+связ|связаться|заявк|заказать|звонок|feedback|contact|callback|request",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled)),
-    ("Авторизация", new Regex(@"\bвойти\b|\bвход\b|авториз|login|log-in|signin|sign-in|\bauth\b|личн\w*\s+кабинет|account",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled)),
-    ("Регистрация", new Regex(@"регистрац|зарегистр|register|signup|sign-up",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled)),
-    ("Заказ", new Regex(@"корзин|оформлен|cart|basket|checkout|order",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled)),
-    ("Подписка", new Regex(@"подпис|subscribe|newsletter",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled)),
-};
+        
 
-        private static readonly Regex FileExtRx = new(@"\.(jpe?g|png|gif|svg|webp|pdf|docx?|xlsx?|zip|rar|mp4|mp3)$",
-            RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
+        /// <summary>
+        /// Запускает процесс сканирования: открывает браузер, читает ссылки и формы с главной страницы.
+        /// </summary>
         public async Task<ScanResult> ScanSiteAsync(string startUrl, IProgress<ScanProgress> progress = null) {
             progress?.Report(new ScanProgress("Запуск браузера..."));
 
@@ -175,7 +181,6 @@ namespace PdnAudit.Core.Services.Analyzers {
             await StartBrowserAsync();
 
             scanResult.PageTitle = await page.TitleAsync();
-            scanResult.Links = await GetLinksAsync();
 
             progress?.Report(new ScanProgress("Поиск и анализ форм на сайте..."));
             scanResult.Forms = await GetFormsAsync();
@@ -183,23 +188,123 @@ namespace PdnAudit.Core.Services.Analyzers {
 
             return scanResult;
         }
-        
-        private async Task<List<string>> GetLinksAsync() {
-            if (page == null) return new List<string>();
 
-            var linkLocators = await page.GetByRole(AriaRole.Link).AllAsync();
-            var links = new List<string>();
-
-            foreach (var locator in linkLocators)
+        /// <summary>
+        /// Инициализирует браузер Chromium в скрытом режиме (Headless) и загружает стартовую страницу.
+        /// </summary>
+        public async Task StartBrowserAsync() {
+            playwright = await Playwright.CreateAsync();
+            browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
             {
-                var href = await locator.GetAttributeAsync("href");
-                if (!string.IsNullOrEmpty(href))
+                Headless = true
+            });
+            var context = await browser.NewContextAsync(new BrowserNewContextOptions
+            {
+                UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            });
+            page = await context.NewPageAsync();
+
+            await page.GotoAsync(_startUrl, new PageGotoOptions
+            {
+                WaitUntil = WaitUntilState.DOMContentLoaded,
+                Timeout = 30000
+            });
+            await page.WaitForTimeoutAsync(4000);
+
+            await page.EvaluateAsync("window.scrollTo(0, document.body.scrollHeight)");
+            await page.WaitForTimeoutAsync(2000);
+        }
+
+        /// <summary>
+        /// Ищет ссылки на Политику и Согласие, скачивает их полный текст для дальнейшего анализа ИИ.
+        /// </summary>
+        public async Task<(Document PrivacyDocument, Document ConsentDocument)> GetPdnDocuments(IProgress<ScanProgress> progress = null) {
+            progress?.Report(new ScanProgress("Поиск ссылки на политику обработки данных"));
+            var (privacyUrl, consentUrl) = await FindDocumentsLinks();
+
+            Document privacyDocument = new Document();
+            privacyDocument.Url = privacyUrl;
+            privacyDocument.DocumentType = "Политика обработки персональных данных";
+
+            // Если ссылка найдена, сразу скачиваем текст
+            if (!string.IsNullOrEmpty(privacyUrl))
+            {
+                progress?.Report(new ScanProgress("Скачивание текста политики обработки данных"));
+                privacyDocument.FullText = await GetTextFromUrlAsync(privacyUrl);
+            }
+
+            Document consentDocument = new Document();
+            consentDocument.Url = consentUrl;
+            consentDocument.DocumentType = "Согласие на обработку персональных данных";
+
+            // Если ссылка найдена, сразу скачиваем текст
+            if (!string.IsNullOrEmpty(consentUrl))
+            {
+                progress?.Report(new ScanProgress("Скачивание текста согласия на обработку данных"));
+                consentDocument.FullText = await GetTextFromUrlAsync(consentUrl);
+            }
+
+            return (privacyDocument, consentDocument);
+        }
+
+        /// <summary>
+        /// Извлекает реквизиты оператора (ИНН, ОГРН, адрес, контакты) с главной страницы и страниц «Контакты».
+        /// </summary>
+        public async Task<OperatorInfo> GetOperatorInfoAsync(string? policyUrl, IProgress<ScanProgress> progress = null) {
+            progress?.Report(new ScanProgress("Поиск реквизитов оператора..."));
+            var info = new OperatorInfo();
+            var start = new Uri(_startUrl);
+
+            await ExtractOperatorFromPageAsync(page, info);
+
+            var urls = await FindContactPagesAsync(start);
+            if (!string.IsNullOrEmpty(policyUrl)) urls.Add(policyUrl);
+
+            foreach (var url in urls.Distinct().Take(4))
+            {
+                var newContext = await browser.NewContextAsync(new BrowserNewContextOptions
                 {
-                    links.Add(href);
+                    UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                });
+                var p = await newContext.NewPageAsync();
+                try
+                {
+                    await p.GotoAsync(url, new() { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 30000 });
+                    await p.WaitForTimeoutAsync(1000);
+                    await ExtractOperatorFromPageAsync(p, info);
+                }
+                catch (PlaywrightException ex)
+                {
+                    Debug.WriteLine($"CONTACTS: страница {url} не открылась: {ex.Message}");
+                }
+                finally
+                {
+                    await newContext.CloseAsync();
                 }
             }
-            return links;
+            return info;
         }
+
+        /// <summary>
+        /// Закрывает браузер и освобождает все ресурсы Playwright.
+        /// </summary>
+        public async Task CloseAsync() {
+            if (browser != null) await browser.CloseAsync();
+            if (playwright != null) playwright.Dispose();
+        }
+
+        /// <summary>
+        /// Запускает анализ трекеров и cookies для указанного URL.
+        /// </summary>
+        public async Task<TrackingResult> GetTrackingAsync(string url, IProgress<ScanProgress> progress = null) {
+            progress?.Report(new ScanProgress("Проверка трекеров и cookie..."));
+            return await new TrackingAnalyzer(browser).AnalyzeAsync(url);
+        }
+
+        /// <summary>
+        /// Собирает формы со стартовой страницы и дополнительных страниц (контакты, вход, регистрация).
+        /// Исключает дубликаты и формы без полей ввода (например, поиск).
+        /// </summary>
         public async Task<List<FormInfo>> GetFormsAsync() {
             var all = new List<FormInfo>();
             var seen = new HashSet<string>();
@@ -261,7 +366,10 @@ namespace PdnAudit.Core.Services.Analyzers {
             // 3. Формы без полей ввода (поиск и т.п.) не относятся к сбору ПДн
             return all.Where(f => f.Fields.Count > 0).ToList();
         }
-        // ---- открыть страницу и подготовить к сбору ----
+
+        /// <summary>
+        /// Открывает страницу по указанному URL и прокручивает её вниз для подгрузки динамического контента.
+        /// </summary>
         private static async Task OpenForScanAsync(IPage p, string url) {
             await p.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 30000 });
             await p.WaitForTimeoutAsync(1500);
@@ -269,7 +377,9 @@ namespace PdnAudit.Core.Services.Analyzers {
             await p.WaitForTimeoutAsync(1000);
         }
 
-        // ---- все формы одной страницы ----
+        /// <summary>
+        /// Анализирует HTML-код всех форм на странице через JavaScript и возвращает список моделей FormInfo.
+        /// </summary>
         private async Task<List<FormInfo>> ExtractFormsAsync(IPage p) {
             var result = new List<FormInfo>();
             var locators = await p.Locator("form").AllAsync();
@@ -295,7 +405,9 @@ namespace PdnAudit.Core.Services.Analyzers {
             return result;
         }
 
-        // ---- поиск страниц, где вероятны формы ----
+        /// <summary>
+        /// Ищет ссылки на страницы сайта, где с высокой вероятностью есть формы (вход, регистрация, контакты).
+        /// </summary>
         private async Task<List<string>> FindFormPagesAsync(IPage p, int maxPages) {
             string json = await p.EvaluateAsync<string>("""
         () => JSON.stringify([...document.querySelectorAll('a[href]')]
@@ -336,58 +448,10 @@ namespace PdnAudit.Core.Services.Analyzers {
             }
             return result;
         }
-        
-        public async Task StartBrowserAsync() {
-            playwright = await Playwright.CreateAsync();
-            browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
-            {
-                Headless = true
-            });
-            var context = await browser.NewContextAsync(new BrowserNewContextOptions
-            {
-                UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            });
-            page = await context.NewPageAsync();
 
-            await page.GotoAsync(_startUrl, new PageGotoOptions
-            {
-                WaitUntil = WaitUntilState.DOMContentLoaded,
-                Timeout = 30000
-            });
-            await page.WaitForTimeoutAsync(4000);
-
-            await page.EvaluateAsync("window.scrollTo(0, document.body.scrollHeight)");
-            await page.WaitForTimeoutAsync(2000);
-        }
-
-        public async Task<(Document PrivacyDocument, Document ConsentDocument)> GetPdnDocuments(IProgress<ScanProgress> progress = null) {
-            progress?.Report(new ScanProgress("Поиск ссылки на политику обработки данных"));
-            var (privacyUrl, consentUrl) = await FindDocumentsLinks();
-
-            Document privacyDocument = new Document();
-            privacyDocument.Url = privacyUrl;
-            privacyDocument.DocumentType = "Политика обработки персональных данных";
-
-            // Если ссылка найдена, сразу скачиваем текст
-            if (!string.IsNullOrEmpty(privacyUrl))
-            {
-                progress?.Report(new ScanProgress("Скачивание текста политики обработки данных"));
-                privacyDocument.FullText = await GetTextFromUrlAsync(privacyUrl);
-            }
-
-            Document consentDocument = new Document();
-            consentDocument.Url = consentUrl;
-            consentDocument.DocumentType = "Согласие на обработку персональных данных";
-
-            // Если ссылка найдена, сразу скачиваем текст
-            if (!string.IsNullOrEmpty(consentUrl))
-            {
-                progress?.Report(new ScanProgress("Скачивание текста согласия на обработку данных"));
-                consentDocument.FullText = await GetTextFromUrlAsync(consentUrl);
-            }
-
-            return (privacyDocument, consentDocument);
-        }
+        /// <summary>
+        /// Загружает страницу в изолированном контексте и извлекает с неё весь видимый текст (используется для Политики).
+        /// </summary>
         private async Task<string> GetTextFromUrlAsync(string url) {
             // Создаем изолированный контекст, чтобы не влиять на основную страницу page
             var context = await browser.NewContextAsync(new BrowserNewContextOptions
@@ -423,6 +487,10 @@ namespace PdnAudit.Core.Services.Analyzers {
                 await context.CloseAsync();
             }
         }
+
+        /// <summary>
+        /// Ищет на главной странице ссылки на Политику и Согласие, при необходимости переходя на доп. страницы.
+        /// </summary>
         private async Task<(string? PrivacyUrl, string? ConsentUrl)> FindDocumentsLinks() {
             var privacyRegex = new Regex(
                 @"политик[аиуеой]\s+(?:в\s+отношении\s+)?(?:конфиденциальност|обработк\w*\s+(?:персональн\w*\s+)?данн|персональн\w*\s+данн|защит\w*\s+(?:персональн\w*\s+)?данн)" +
@@ -521,6 +589,10 @@ namespace PdnAudit.Core.Services.Analyzers {
             }
             return (privacyUrl, consentUrl);
         }
+
+        /// <summary>
+        /// Сортирует ссылки по приоритету (высокий, средний) для запасного поиска документов.
+        /// </summary>
         private async Task<List<string>> FilterAndSortLinksByPriority() {
             var prioritylinks = new List<(string link, int score)>();
 
@@ -548,7 +620,6 @@ namespace PdnAudit.Core.Services.Analyzers {
                     prioritylinks.Add((new Uri(baseUrl,href).AbsoluteUri, score));
                 }
             }
-            linksAmount = prioritylinks.Count;
             return prioritylinks
         .GroupBy(x => x.link)
         .Select(g => g.First())
@@ -557,41 +628,9 @@ namespace PdnAudit.Core.Services.Analyzers {
         .ToList();
         }
 
-        public async Task<OperatorInfo> GetOperatorInfoAsync(string? policyUrl, IProgress<ScanProgress> progress = null) {
-            progress?.Report(new ScanProgress("Поиск реквизитов оператора..."));
-            var info = new OperatorInfo();
-            var start = new Uri(_startUrl);
-
-            await ExtractOperatorFromPageAsync(page, info);
-
-            var urls = await FindContactPagesAsync(start);
-            if (!string.IsNullOrEmpty(policyUrl)) urls.Add(policyUrl);
-
-            foreach (var url in urls.Distinct().Take(4))
-            {
-                var newContext = await browser.NewContextAsync(new BrowserNewContextOptions
-                {
-                    UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                });
-                var p = await newContext.NewPageAsync();
-                try
-                {
-                    await p.GotoAsync(url, new() { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 30000 });
-                    await p.WaitForTimeoutAsync(1000);
-                    await ExtractOperatorFromPageAsync(p, info);
-                }
-                catch (PlaywrightException ex)
-                {
-                    Debug.WriteLine($"CONTACTS: страница {url} не открылась: {ex.Message}");
-                }
-                finally
-                {
-                    await newContext.CloseAsync();
-                }
-            }
-            return info;
-        }
-
+        /// <summary>
+        /// Извлекает реквизиты оператора (ИНН, ОГРН, email, телефон) из футера и основного текста страницы.
+        /// </summary>
         private async Task ExtractOperatorFromPageAsync(IPage p, OperatorInfo info) {
             await p.EvaluateAsync("window.scrollTo(0, document.body.scrollHeight)");
             await p.WaitForTimeoutAsync(500);
@@ -616,6 +655,9 @@ namespace PdnAudit.Core.Services.Analyzers {
             }
         }
 
+        /// <summary>
+        /// Находит ссылки на страницы с контактными данными (Контакты, Реквизиты, О компании).
+        /// </summary>
         private async Task<List<string>> FindContactPagesAsync(Uri start) {
             var result = new List<string>();
             string json = "";
@@ -649,14 +691,8 @@ namespace PdnAudit.Core.Services.Analyzers {
 
             return result.Distinct().Take(3).ToList();
         }
-        public async Task CloseAsync() {
-            if (browser != null) await browser.CloseAsync();
-            if (playwright != null) playwright.Dispose();
-        }
-        public async Task<TrackingResult> GetTrackingAsync(string url, IProgress<ScanProgress> progress = null) {
-            progress?.Report(new ScanProgress("Проверка трекеров и cookie..."));
-            return await new TrackingAnalyzer(browser).AnalyzeAsync(url);
-        } 
+
+        
     }
 }
 //https://www.citilink.ru/ https://demoqa.com/automation-practice-form

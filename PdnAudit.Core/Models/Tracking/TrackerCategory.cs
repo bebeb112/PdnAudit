@@ -1,10 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace PdnAudit.Core.Models.Tracking {
+﻿namespace PdnAudit.Core.Models.Tracking {
+    /// <summary>
+    /// Константы для классификации сторонних сервисов и cookies, обнаруженных на сайте.
+    /// Используются для формирования правил оценки рисков (аналитика, реклама, виджеты и т.д.).
+    /// </summary>
     public static class TrackerCategory {
         public const string Analytics = "Аналитика";
         public const string Ads = "Реклама / пиксели";
