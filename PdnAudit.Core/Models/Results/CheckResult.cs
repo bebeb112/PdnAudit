@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace PdnAudit.Core.Models {
+namespace PdnAudit.Core.Models.Results {
     public class CheckResult {
         public string Severity { get; set; }
         public string Title { get; set; }

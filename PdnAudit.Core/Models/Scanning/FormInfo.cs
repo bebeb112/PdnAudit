@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace PdnAudit.Core.Models {
+namespace PdnAudit.Core.Models.Scanning {
     public class FormInfo {
         public string BasePageUrl { get; set; }
         public string ActionUrl { get; set; }
@@ -19,12 +19,12 @@ namespace PdnAudit.Core.Models {
         public List<FormField> Fields { get; set; } = new List<FormField>();
         public bool HasPdnFields { 
             get {
-                if (this.Fields == null || this.Fields.Count == 0) return false;
+                if (Fields == null || Fields.Count == 0) return false;
 
                 // Список ключевых слов, которые указывают на сбор ПДн
                 string[] pdnKeywords = { "имя", "фио", "телефон", "почта", "email", "phone", "name", "tel", "mail", "адрес", "address" };
 
-                foreach (var field in this.Fields)
+                foreach (var field in Fields)
                 {
                     // 1. Проверяем тип поля
                     if (field.Type == "email" || field.Type == "tel" || field.Type == "password")

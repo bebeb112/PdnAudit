@@ -1,8 +1,11 @@
 ﻿using Microsoft.Playwright;
 using Microsoft.Win32;
 using PdnAudit.Core.Models;
+using PdnAudit.Core.Models.Results;
+using PdnAudit.Core.Models.Scanning;
 using PdnAudit.Core.Models.Tracking;
 using PdnAudit.Core.Services;
+using PdnAudit.Core.Services.Analyzers;
 using PdnAudit.Core.Services.Extractors;
 using PdnAudit.Core.Services.Rules;
 using System.Diagnostics;
@@ -20,6 +23,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 using static System.Net.Mime.MediaTypeNames;
+using PdnAudit.Core.Services.Generators;
 
 namespace PdnAudit
 {

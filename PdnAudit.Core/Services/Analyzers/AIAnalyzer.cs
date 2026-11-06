@@ -1,4 +1,4 @@
-﻿using PdnAudit.Core.Models;
+﻿using PdnAudit.Core.Models.Results;
 using PdnAudit.Core.Services.Extractors;
 using System;
 using System.Collections.Generic;
@@ -8,7 +8,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-namespace PdnAudit.Core.Services {
+namespace PdnAudit.Core.Services.Analyzers {
     public class AIAnalyzer {
         //Я прекрасно понимаю, что так нельзя, но мне плевать на этот ключ, берите кто хотите
         private static string authorizationKey = "MDFhMWFkMTAtY2M3Zi03N2M3LWI3ZTgtN2JhMTA2ODk1NjMzOmZhNjI4YWE5LTg1MGMtNDNjNS04NzEyLWZiZmFiNGJiYTgzNQ==";
@@ -92,7 +92,7 @@ namespace PdnAudit.Core.Services {
             };
 
             var jsonContent = JsonSerializer.Serialize(requestBody);
-            var httpContent = new StringContent(jsonContent, System.Text.Encoding.UTF8, "application/json");
+            var httpContent = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
             var response = await client.PostAsync("https://gigachat.devices.sberbank.ru/api/v1/chat/completions", httpContent);
             string result = await response.Content.ReadAsStringAsync();

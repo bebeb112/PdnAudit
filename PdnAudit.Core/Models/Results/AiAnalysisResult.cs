@@ -5,7 +5,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
-namespace PdnAudit.Core.Models {
+namespace PdnAudit.Core.Models.Results {
     public class AiAnalysisResult {
         public AiItem Purposes { get; set; } = new();
         public AiItem LegalBasis { get; set; } = new();

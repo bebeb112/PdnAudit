@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace PdnAudit.Core.Models {
+namespace PdnAudit.Core.Models.Scanning {
     public class ScanResult {
         public string Url { get; set; }
         public string PageTitle { get; set; }

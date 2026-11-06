@@ -8,7 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
-namespace PdnAudit.Core.Services {
+namespace PdnAudit.Core.Services.Analyzers {
     public class TrackingAnalyzer {
         private readonly IBrowser _browser;
         public TrackingAnalyzer(IBrowser browser) => _browser = browser;

@@ -1,4 +1,4 @@
-﻿using PdnAudit.Core.Models;
+﻿using PdnAudit.Core.Models.Results;
 using System;
 using System.Collections.Generic;
 using System.Linq;

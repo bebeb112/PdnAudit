@@ -1,6 +1,6 @@
 ﻿using Microsoft.Playwright;
-using PdnAudit.Core.Models;
 using PdnAudit.Core.Models.Operator;
+using PdnAudit.Core.Models.Scanning;
 using PdnAudit.Core.Models.Tracking;
 using PdnAudit.Core.Services.Dictionaries;
 using PdnAudit.Core.Services.Extractors;
@@ -13,7 +13,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-namespace PdnAudit.Core.Services {
+namespace PdnAudit.Core.Services.Analyzers {
     public class SiteScanner {
         private IPage page;
         private IBrowser browser;
@@ -414,7 +414,7 @@ namespace PdnAudit.Core.Services {
             }
             catch (PlaywrightException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Ошибка загрузки текста по ссылке {url}: {ex.Message}");
+                Debug.WriteLine($"Ошибка загрузки текста по ссылке {url}: {ex.Message}");
                 return string.Empty; // Если не удалось, возвращаем пустоту
             }
             finally

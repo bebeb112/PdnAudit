@@ -1,12 +1,12 @@
 ﻿using Microsoft.Playwright;
-using PdnAudit.Core.Models;
+using PdnAudit.Core.Models.Results;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace PdnAudit.Core.Services {
+namespace PdnAudit.Core.Services.Generators {
     public class ReportGenerator {
         public async Task GeneratePdfReportAsync(List<CheckResult> results, string siteUrl, string outputPath) {
             // 1. Генерируем HTML-код отчета
@@ -68,7 +68,7 @@ namespace PdnAudit.Core.Services {
     <h1>Отчет о соответствии 152-ФЗ</h1>
     <div class='header-info'>
         <p><strong>Проверенный сайт:</strong> {siteUrl}</p>
-        <p><strong>Дата проверки:</strong> {System.DateTime.Now:dd.MM.yyyy HH:mm}</p>
+        <p><strong>Дата проверки:</strong> {DateTime.Now:dd.MM.yyyy HH:mm}</p>
         <p><strong>Статистика:</strong> Критично: {critical.Count} | Замечаний: {warnings.Count} | Пройдено: {passed.Count}</p>
     </div>
 ");
