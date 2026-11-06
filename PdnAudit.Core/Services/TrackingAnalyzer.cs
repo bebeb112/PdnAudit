@@ -63,17 +63,28 @@ namespace PdnAudit.Core.Services {
                 }
                 catch (PlaywrightException ex) { phase.Errors.Add("Загрузка: " + ex.Message); }
 
-                await page.WaitForTimeoutAsync(3000);
-                phase.Banner = await DetectBannerAsync(page);
+                //Т.к. баннер может появиться через несколько секунд, пробуем до 5 раз с паузой в секунду
+                for (int i = 0; i < 5; i++)
+                {
+                    await page.WaitForTimeoutAsync(1000);
+                    try { phase.Banner = await DetectBannerAsync(page); }
+                    catch (PlaywrightException ex) { phase.Errors.Add("Поиск баннера: " + ex.Message); }
+                    if (phase.Banner.Found) break;
+                }
 
                 if (acceptConsent && phase.Banner.AcceptFound)
                 {
+                    var accept = page.Locator("[data-pdn-accept]").First;
                     try
                     {
-                        await page.Locator("[data-pdn-accept]").First.ClickAsync(new() { Timeout = 5000, Force = true });
-                        await page.WaitForTimeoutAsync(3000);
+                        await accept.ClickAsync(new() { Timeout = 5000 });          
                     }
-                    catch (Exception ex) { phase.Errors.Add("Клик по «Принять»: " + ex.Message); }
+                    catch (PlaywrightException)
+                    {
+                        try { await accept.DispatchEventAsync("click"); }            
+                        catch (Exception ex) { phase.Errors.Add("Клик по «Принять»: " + ex.Message); }
+                    }
+                    await page.WaitForTimeoutAsync(3000);
                 }
 
                 try { await page.EvaluateAsync("window.scrollTo(0, document.body.scrollHeight)"); } catch { }
@@ -106,67 +117,81 @@ namespace PdnAudit.Core.Services {
         private static async Task<CookieBannerInfo> DetectBannerAsync(IPage page) {
             string json = await page.EvaluateAsync<string>("""
         () => {
-        const norm = s => (s || '').replace(/[\u00AD\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
-        const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+            const norm = s => (s || '')
+                .replace(/[\u00AD\u200B-\u200D\uFEFF]/g, '')
+                .replace(/\s+/g, ' ').trim().toLowerCase();
+            const visible = el => el.getClientRects().length > 0
+                && getComputedStyle(el).visibility !== 'hidden';
+            const cookieRe = /cookie|куки/;
+            const clickSel = 'button, a, [role="button"], input[type="button"], input[type="submit"]';
 
-        const res = { Found: false, Text: '', AcceptFound: false, AcceptText: '',
-                      HasReject: false, HasSettings: false, HasPolicyLink: false };
+            const res = { Found: false, Text: '', AcceptFound: false, AcceptText: '',
+                          HasReject: false, HasSettings: false, HasPolicyLink: false };
 
-        // 1. Ищем все видимые кнопки на странице
-        const allButtons = [...document.querySelectorAll('button, a, [role="button"], input[type="button"]')].filter(visible);
+            // ---------- 1. Ищем контейнер баннера ----------
+            // Сначала по id/class/role, внутри должен быть текст про cookie и хотя бы одна кнопка
+            const bySelector = [...document.querySelectorAll(
+                '[id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i], ' +
+                '[id*="gdpr" i], [class*="gdpr" i], [role="dialog"], [role="alertdialog"], [aria-label*="cookie" i]')]
+                .filter(el => el !== document.body && el !== document.documentElement && visible(el))
+                .filter(el => {
+                    const t = norm(el.innerText);
+                    return cookieRe.test(t) && t.length < 1500 && el.querySelector(clickSel);
+                })
+                .sort((a, b) => a.innerText.length - b.innerText.length);   // самый маленький = самый точный
 
-        // 2. Ищем кнопку "Принять" по тексту
-        let acceptBtn = null;
-        for (const b of allButtons) {
-            const t = norm(b.innerText || b.value || b.getAttribute('aria-label'));
-            if (/принять|принимаю|согласен|соглашаюсь|разрешить|понятно|хорошо|^ок$|^ok$|accept|agree|allow|got it/.test(t)) {
-                acceptBtn = b;
-                res.AcceptFound = true; 
-                res.AcceptText = t;
-                break;
+            let box = bySelector[0] || null;
+
+            // Запасной вариант: закреплённый на экране блок с текстом про cookie (классы могут быть любыми)
+            if (!box) {
+                box = [...document.querySelectorAll('div, section, aside, dialog')]
+                    .filter(el => {
+                        if (!visible(el)) return false;
+                        const pos = getComputedStyle(el).position;
+                        if (pos !== 'fixed' && pos !== 'sticky') return false;
+                        const t = norm(el.innerText);
+                        return cookieRe.test(t) && t.length > 20 && t.length < 1500;
+                    })
+                    .sort((a, b) => a.innerText.length - b.innerText.length)[0] || null;
             }
-        }
 
-        // 3. Если нашли кнопку, проверяем, есть ли рядом текст про cookie
-        if (acceptBtn) {
-            // Поднимаемся вверх по дереву DOM, чтобы найти контейнер баннера
-            let parent = acceptBtn.parentElement;
-            for (let i = 0; i < 4 && parent; i++) {
-                const text = norm(parent.innerText);
-                if (/cookie|куки|файлы cookie/.test(text) && text.length < 1000) {
-                    res.Found = true;
-                    res.Text = text.slice(0, 500);
-                    res.HasPolicyLink = [...parent.querySelectorAll('a[href]')].some(a =>
-                        /cookie|куки|политик|privacy|персональн|policy/.test(norm(a.innerText) + ' ' + (a.getAttribute('href') || '').toLowerCase()));
+            if (!box) return JSON.stringify(res);
 
-                    // Проверяем, есть ли кнопки отклонения
-                    res.HasReject = allButtons.some(b => /отклон|отказ|не соглас|только необходим|reject|decline/.test(norm(b.innerText)));
-                    res.HasSettings = allButtons.some(b => /настро|управл|settings|manage/.test(norm(b.innerText)));
-                    break;
+            res.Found = true;
+            res.Text = norm(box.innerText).slice(0, 500);
+
+            // ---------- 2. Кнопки ТОЛЬКО внутри баннера ----------
+            const rejectRe   = /отклон|отказ|не соглас|необходим|обязательн|без аналитик|reject|decline|deny|necessary|essential|refuse/;
+            const settingsRe = /настро|управл|settings|preferences|customi[sz]e|manage/;
+            const acceptRe   = /^(принять|принимаю|согласен|согласна|соглашаюсь|разрешить|понятно|хорошо|ок|ok|accept|agree|allow|got it|i agree)(?=$|[\s.,!])/;
+
+            for (const b of [...box.querySelectorAll(clickSel)].filter(visible)) {
+                const t = norm(b.innerText || b.value || b.getAttribute('aria-label'));
+                if (!t) continue;
+
+                if (rejectRe.test(t)) { res.HasReject = true; continue; }
+                if (settingsRe.test(t)) { res.HasSettings = true; continue; }
+
+                // Ссылки с переходом на другую страницу не считаем кнопкой «Принять»
+                const href = b.tagName === 'A' ? (b.getAttribute('href') || '') : '';
+                const navigates = href && !/^(#|javascript:)/i.test(href);
+
+                if (!res.AcceptFound && !navigates && acceptRe.test(t)) {
+                    res.AcceptFound = true;
+                    res.AcceptText = t;
+                    b.setAttribute('data-pdn-accept', '1');     // метка, по которой кликает C#
                 }
-                parent = parent.parentElement;
             }
-        }
 
-        // Если не нашли по кнопке, ищем по тексту "cookie" в любых видимых блоках
-        if (!res.Found) {
-            const elements = [...document.querySelectorAll('div, section, aside, footer')].filter(visible);
-            for (const el of elements) {
-                const text = norm(el.innerText);
-                if (/cookie|куки/.test(text) && text.length < 1500 && text.length > 20) {
-                    res.Found = true;
-                    res.Text = text.slice(0, 500);
-                    break;
-                }
-            }
-        }
+            res.HasPolicyLink = [...box.querySelectorAll('a[href]')].some(a =>
+                /cookie|куки|политик|privacy|персональн|policy/.test(
+                    norm(a.innerText) + ' ' + (a.getAttribute('href') || '').toLowerCase()));
 
-        return JSON.stringify(res);
+            return JSON.stringify(res);
         }
         """);
 
-            return JsonSerializer.Deserialize<CookieBannerInfo>(json,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new CookieBannerInfo();
+            return JsonSerializer.Deserialize<CookieBannerInfo>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new CookieBannerInfo();
         }
     }
 }
