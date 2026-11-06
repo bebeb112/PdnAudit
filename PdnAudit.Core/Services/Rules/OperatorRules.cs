@@ -34,11 +34,11 @@ namespace PdnAudit.Core.Services.Rules {
                 results.Add(CheckResult.Create(Severity.Warning, Cat,
                     "ИНН не проходит проверку контрольной суммы", "ст. 18.1 152-ФЗ",
                     "Проверить правильность ИНН на сайте",
-                    $"Найдено: {op.IsINNValid} (источник: {Src(op, "ИНН")})"));
+                    $"Найдено: {op.INN} (источник: {Src(op, "ИНН")})"));
             else
                 results.Add(CheckResult.Create(Severity.Passed, Cat,
                     "ИНН указан и корректен", "ст. 18.1 152-ФЗ", "",
-                    $"{op.IsINNValid} (источник: {Src(op, "ИНН")})"));
+                    $"{op.INN} (источник: {Src(op, "ИНН")})"));
 
             if (string.IsNullOrEmpty(op.OGRN))
                 results.Add(CheckResult.Create(Severity.Warning, Cat,
