@@ -25,7 +25,10 @@ namespace PdnAudit.Core.Services {
             var byHost = new Dictionary<string, RequestInfo>();
 
             // Новый контекст = чистые cookies и storage
-            var context = await _browser.NewContextAsync();
+            var context = await _browser.NewContextAsync(new BrowserNewContextOptions
+            {
+                UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            });
             var page = await context.NewPageAsync();
             try
             {

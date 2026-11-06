@@ -43,6 +43,14 @@ namespace PdnAudit
                 return;
             }
 
+            LoadingOverlay.Visibility = Visibility.Visible;
+            CheckButton.IsEnabled = false;
+
+            var progress = new Progress<ScanProgress>(status =>
+            {
+                LoadingStatusText.Text = status.Message;
+            });
+
             // Блокируем кнопку, чтобы не нажимали дважды
             CheckButton.IsEnabled = false;
             CheckButton.Content = "Анализ...";
@@ -57,13 +65,13 @@ namespace PdnAudit
             try
             {
                 scanner = new SiteScanner();
-                ScanResult scanResult = await scanner.ScanSiteAsync(url);
+                ScanResult scanResult = await scanner.ScanSiteAsync(url, progress);
 
                 Uri baseUrl = new Uri(url);
 
-                (Document privacyDocument, Document consentDocument) = await scanner.GetPdnDocuments();
-                var tracking = await scanner.GetTrackingAsync(baseUrl.ToString());
-                var op = await scanner.GetOperatorInfoAsync(privacyDocument?.Url);
+                (Document privacyDocument, Document consentDocument) = await scanner.GetPdnDocuments(progress);
+                var tracking = await scanner.GetTrackingAsync(baseUrl.ToString(), progress);
+                var op = await scanner.GetOperatorInfoAsync(privacyDocument?.Url, progress);
 
                 var all = new List<CheckResult>();
 
@@ -82,6 +90,8 @@ namespace PdnAudit
                 {
                     try
                     {
+                        LoadingStatusText.Text = "ИИ анализирует текст Политики обработки данных...";
+
                         AIAnalyzer analyzer = new AIAnalyzer();
                         string token = await analyzer.GetGigaChatTokenAsync();
                         string rawAiResponse = await analyzer.AnalyzeGigaChatAsync(token, privacyDocument.FullText);
@@ -113,6 +123,8 @@ namespace PdnAudit
                 if (scanner != null) await scanner.CloseAsync();
                 CheckButton.IsEnabled = true;
                 CheckButton.Content = "Проверить";
+
+                LoadingOverlay.Visibility = Visibility.Collapsed;
             }
         }
         private async void GenerateReportButton_Click(object sender, RoutedEventArgs e) {

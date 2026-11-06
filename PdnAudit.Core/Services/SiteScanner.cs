@@ -165,7 +165,9 @@ namespace PdnAudit.Core.Services {
         private static readonly Regex FileExtRx = new(@"\.(jpe?g|png|gif|svg|webp|pdf|docx?|xlsx?|zip|rar|mp4|mp3)$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
-        public async Task<ScanResult> ScanSiteAsync(string startUrl) {
+        public async Task<ScanResult> ScanSiteAsync(string startUrl, IProgress<ScanProgress> progress = null) {
+            progress?.Report(new ScanProgress("Запуск браузера..."));
+
             _startUrl = startUrl;
 
             ScanResult scanResult = new ScanResult();
@@ -174,6 +176,7 @@ namespace PdnAudit.Core.Services {
             var mainPage = page;
             var mainUrl = page.Url;
 
+            progress?.Report(new ScanProgress("Анализ форм на странице..."));
 
             scanResult.Links = await GetLinksAsync();
             if (await OpenAuthFormAsync())
@@ -192,6 +195,7 @@ namespace PdnAudit.Core.Services {
                 page = mainPage;
             }
             await page.GotoAsync(mainUrl, new() { WaitUntil = WaitUntilState.DOMContentLoaded });
+
 
             return scanResult;
         }
@@ -264,8 +268,10 @@ namespace PdnAudit.Core.Services {
             // 1. Стартовая страница
             List<string> extraUrls;
 
-            // ИСПРАВЛЕНИЕ: Создаем отдельный контекст для стартовой страницы
-            var startContext = await browser.NewContextAsync();
+            var startContext = await browser.NewContextAsync(new BrowserNewContextOptions
+            {
+                UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            });
             var start = await startContext.NewPageAsync();
 
             try
@@ -282,9 +288,12 @@ namespace PdnAudit.Core.Services {
             // 2. Остальные страницы
             foreach (var url in extraUrls)
             {
-                // ИСПРАВЛЕНИЕ: Для каждой новой страницы создаем СВОЙ контекст
-                var pageContext = await browser.NewContextAsync();
-                var p = await pageContext.NewPageAsync();
+                
+                var context = await browser.NewContextAsync(new BrowserNewContextOptions
+                {
+                    UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                });
+                var p = await context.NewPageAsync();
 
                 try
                 {
@@ -297,7 +306,7 @@ namespace PdnAudit.Core.Services {
                 }
                 finally
                 {
-                    await pageContext.CloseAsync(); // Обязательно закрываем контекст
+                    await context.CloseAsync(); // Обязательно закрываем контекст
                 }
             }
 
@@ -440,22 +449,27 @@ namespace PdnAudit.Core.Services {
             playwright = await Playwright.CreateAsync();
             browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
             {
-                Headless = false
+                Headless = true
             });
-            page = await browser.NewPageAsync();
+            var context = await browser.NewContextAsync(new BrowserNewContextOptions
+            {
+                UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            });
+            page = await context.NewPageAsync();
 
             await page.GotoAsync(_startUrl, new PageGotoOptions
             {
-                WaitUntil = WaitUntilState.DOMContentLoaded
+                WaitUntil = WaitUntilState.DOMContentLoaded,
+                Timeout = 30000
             });
-            await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
-            await page.WaitForTimeoutAsync(3000);
+            await page.WaitForTimeoutAsync(4000);
 
             await page.EvaluateAsync("window.scrollTo(0, document.body.scrollHeight)");
-            await page.WaitForTimeoutAsync(3000);
+            await page.WaitForTimeoutAsync(2000);
         }
 
-        public async Task<(Document PrivacyDocument, Document ConsentDocument)> GetPdnDocuments() {
+        public async Task<(Document PrivacyDocument, Document ConsentDocument)> GetPdnDocuments(IProgress<ScanProgress> progress = null) {
+            progress?.Report(new ScanProgress("Поиск ссылки на политику обработки данных"));
             var (privacyUrl, consentUrl) = await FindDocumentsLinks();
 
             Document privacyDocument = new Document();
@@ -465,6 +479,7 @@ namespace PdnAudit.Core.Services {
             // Если ссылка найдена, сразу скачиваем текст
             if (!string.IsNullOrEmpty(privacyUrl))
             {
+                progress?.Report(new ScanProgress("Скачивание текста политики обработки данных"));
                 privacyDocument.FullText = await GetTextFromUrlAsync(privacyUrl);
             }
 
@@ -475,6 +490,7 @@ namespace PdnAudit.Core.Services {
             // Если ссылка найдена, сразу скачиваем текст
             if (!string.IsNullOrEmpty(consentUrl))
             {
+                progress?.Report(new ScanProgress("Скачивание текста согласия на обработку данных"));
                 consentDocument.FullText = await GetTextFromUrlAsync(consentUrl);
             }
 
@@ -482,7 +498,10 @@ namespace PdnAudit.Core.Services {
         }
         private async Task<string> GetTextFromUrlAsync(string url) {
             // Создаем изолированный контекст, чтобы не влиять на основную страницу page
-            var context = await browser.NewContextAsync();
+            var context = await browser.NewContextAsync(new BrowserNewContextOptions
+            {
+                UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            });
             var p = await context.NewPageAsync();
 
             try
@@ -637,7 +656,9 @@ namespace PdnAudit.Core.Services {
         .ToList();
         }
 
-        public async Task<OperatorInfo> GetOperatorInfoAsync(string? policyUrl) {
+        public async Task<OperatorInfo> GetOperatorInfoAsync(string? policyUrl, IProgress<ScanProgress> progress = null) {
+            progress?.Report(new ScanProgress("Поиск реквизитов оператора..."));
+
             var info = new OperatorInfo();
             var start = new Uri(page.Url);
 
@@ -650,7 +671,10 @@ namespace PdnAudit.Core.Services {
 
             foreach (var url in urls.Distinct().Take(4))
             {
-                var newContext = await browser.NewContextAsync();
+                var newContext = await browser.NewContextAsync(new BrowserNewContextOptions
+                {
+                    UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                });
                 var p = await newContext.NewPageAsync();
 
                 try
@@ -737,7 +761,10 @@ namespace PdnAudit.Core.Services {
             if (browser != null) await browser.CloseAsync();
             if (playwright != null) playwright.Dispose();
         }
-        public Task<TrackingResult> GetTrackingAsync(string url) => new TrackingAnalyzer(browser).AnalyzeAsync(url);
+        public async Task<TrackingResult> GetTrackingAsync(string url, IProgress<ScanProgress> progress = null) {
+            progress?.Report(new ScanProgress("Проверка трекеров и cookie..."));
+            return await new TrackingAnalyzer(browser).AnalyzeAsync(url);
+        } 
     }
 }
 //https://www.citilink.ru/ https://demoqa.com/automation-practice-form
