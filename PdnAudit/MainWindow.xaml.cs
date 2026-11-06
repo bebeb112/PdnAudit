@@ -95,14 +95,20 @@ namespace PdnAudit
                         AIAnalyzer analyzer = new AIAnalyzer();
                         string token = await analyzer.GetGigaChatTokenAsync();
                         string rawAiResponse = await analyzer.AnalyzeGigaChatAsync(token, privacyDocument.FullText);
-                        string cleanJson = TextNormalizer.CleanJsonFromAI(rawAiResponse);
-                        AiAnalysisResult aiResult = analyzer.ParseAiResponse(cleanJson);
-                        all.AddRange(AiAnalysisRules.Check(aiResult));
+
+                        var aiResponse = analyzer.ParseAndVerify(rawAiResponse, privacyDocument.FullText);
+                        bool hasForeignTrackers = tracking.Before.Requests.Concat(tracking.After.Requests).Any(x => x.IsForeign && (x.Category == TrackerCategory.Analytics || x.Category == TrackerCategory.Ads));
+                        
+                        all.AddRange(AiAnalysisRules.Check(aiResponse, hasForeignTrackers));
                     }
                     catch (Exception ex)
                     {
-                        all.Add(new CheckResult { Severity = Severity.Info, Title = $"Ошибка ИИ: {ex.Message}" });
+                        all.Add(CheckResult.Create(Severity.Info, "Анализ Политики (ИИ)", "Не удалось выполнить анализ Политики с помощью ИИ", "", "", ex.Message));
                     }
+                }
+                else if (privacyDocument != null && !string.IsNullOrEmpty(privacyDocument.Url))
+                {
+                    all.Add(CheckResult.Create(Severity.Info, "Анализ Политики (ИИ)", "Текст Политики не удалось получить или он слишком короткий для анализа", "", "", "Возможно, документ в формате PDF или загружается скриптом: проверьте вручную"));
                 }
                 _lastResults = all;
 
