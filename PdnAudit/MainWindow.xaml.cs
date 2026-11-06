@@ -42,6 +42,10 @@ namespace PdnAudit
                 MessageBox.Show("Введите URL сайта", "Ошибка");
                 return;
             }
+            if(!url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            {
+                url = "https://" + url;
+            }
 
             LoadingOverlay.Visibility = Visibility.Visible;
             CheckButton.IsEnabled = false;
@@ -64,16 +68,20 @@ namespace PdnAudit
 
             try
             {
+                var all = new List<CheckResult>();
+
                 scanner = new SiteScanner();
                 ScanResult scanResult = await scanner.ScanSiteAsync(url, progress);
 
+                if (scanResult.NeedsManualCheck)
+                {
+                    all.Add(CheckResult.Create(Severity.Info, "Формы и сбор данных", "Формы с персональными данными автоматически не обнаружены", "", "Проверьте вручную: форма может загружаться скриптом, открываться по кнопке или находиться во встроенном окне (iframe)", "Проверены главная страница и страницы контактов, входа, регистрации, заказа"));
+                }
                 Uri baseUrl = new Uri(url);
 
                 (Document privacyDocument, Document consentDocument) = await scanner.GetPdnDocuments(progress);
                 var tracking = await scanner.GetTrackingAsync(baseUrl.ToString(), progress);
                 var op = await scanner.GetOperatorInfoAsync(privacyDocument?.Url, progress);
-
-                var all = new List<CheckResult>();
 
                 if (scanResult.Forms != null)
                     all.AddRange(FormRules.CheckForms(scanResult.Forms));

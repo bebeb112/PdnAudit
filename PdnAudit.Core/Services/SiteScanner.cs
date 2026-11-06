@@ -170,71 +170,19 @@ namespace PdnAudit.Core.Services {
 
             _startUrl = startUrl;
 
-            ScanResult scanResult = new ScanResult();
+            ScanResult scanResult = new ScanResult { Url = startUrl };
 
             await StartBrowserAsync();
-            var mainPage = page;
-            var mainUrl = page.Url;
-
-            progress?.Report(new ScanProgress("Анализ форм на странице..."));
-
+            scanResult.PageTitle = await page.TitleAsync();
             scanResult.Links = await GetLinksAsync();
-            if (await OpenAuthFormAsync())
-            {
-                scanResult.Forms = await GetFormsAsync();
-                if (scanResult.Forms.Count == 0) scanResult.NeedsManualCheck = true;
-            }
-            else
-            {
-                scanResult.NeedsManualCheck = true;
-            }
 
-            if (page != mainPage)
-            {
-                await page.CloseAsync();
-                page = mainPage;
-            }
-            await page.GotoAsync(mainUrl, new() { WaitUntil = WaitUntilState.DOMContentLoaded });
-
+            progress?.Report(new ScanProgress("Поиск и анализ форм на сайте..."));
+            scanResult.Forms = await GetFormsAsync();
+            scanResult.NeedsManualCheck = scanResult.Forms.Count == 0;
 
             return scanResult;
         }
-        private async Task<bool> OpenAuthFormAsync() {
-            var context = page.Context;
-            var pagesBefore = context.Pages.Count;
-
-            try
-            {
-                if (!await FindLoginAsync()) return false;
-            }
-            catch (PlaywrightException ex)
-            {
-                Debug.WriteLine($"Не удалось открыть форму входа: {ex.Message}");
-                return false;
-            }
-
-            await page.WaitForTimeoutAsync(500);
-
-            if (context.Pages.Count > pagesBefore)
-            {
-                page = context.Pages.Last();
-                await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
-            }
-
-            try
-            {
-                await page.Locator(
-                    "input[type=password]:visible, input[type=tel]:visible, " +
-                    "input[type=email]:visible, input[autocomplete*=username]:visible")
-                    .First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 5000 });
-                return true;
-            }
-            catch (PlaywrightException)
-            {
-                return false;
-            }
-        }
-
+        
         private async Task<List<string>> GetLinksAsync() {
             if (page == null) return new List<string>();
 
@@ -254,7 +202,6 @@ namespace PdnAudit.Core.Services {
         public async Task<List<FormInfo>> GetFormsAsync() {
             var all = new List<FormInfo>();
             var seen = new HashSet<string>();
-            int maxExtraPages = 6; // Значение по умолчанию
 
             void AddUnique(IEnumerable<FormInfo> forms) {
                 foreach (var f in forms)
@@ -388,63 +335,7 @@ namespace PdnAudit.Core.Services {
             }
             return result;
         }
-        public async Task<bool> FindLoginAsync() {
-            
-            var textPattern = new Regex(
-                @"войти|вход|авторизац|регистрац|зарегистрир|личный кабинет|sign\s?in|log\s?in|sign\s?up|register",
-                RegexOptions.IgnoreCase);
-
-            // Кандидаты: кнопки, ссылки и просто кликабельные элементы
-            var candidates = new[]
-            {
-        page.GetByRole(AriaRole.Button, new() { NameRegex = textPattern }),
-        page.GetByRole(AriaRole.Link,   new() { NameRegex = textPattern }),
-        page.Locator("[type=submit], [role=button], a, button")
-            .Filter(new() { HasTextRegex = textPattern }),
-    };
-
-            foreach (var locator in candidates)
-            {
-                try
-                {
-                    var count = await locator.CountAsync();
-
-                    try
-                    {
-                        await locator.First.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 3000 });
-                        count = await locator.CountAsync();
-                    }
-                    catch (TimeoutException)
-                    {
-                        continue; 
-                    }
-
-                    for (int i = 0; i < count; i++)
-                    {
-                        var element = locator.Nth(i);
-
-                        if (!await element.IsVisibleAsync() || !await element.IsEnabledAsync())
-                            continue;
-
-                        await element.ScrollIntoViewIfNeededAsync();
-                        
-                        await element.ClickAsync(new() { Timeout = 3000, Force = true });
-
-                        await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
-
-                        Debug.WriteLine($"КНОПКА НАЖАТА: {await element.InnerTextAsync()}");
-                        return true;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"Не удалось нажать: {ex.Message}");
-                }
-            }
-
-            Debug.WriteLine("Кнопка входа/регистрации не найдена");
-            return false;
-        }
+        
         public async Task StartBrowserAsync() {
             playwright = await Playwright.CreateAsync();
             browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
