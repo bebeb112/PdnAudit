@@ -173,6 +173,7 @@ namespace PdnAudit.Core.Services {
             ScanResult scanResult = new ScanResult { Url = startUrl };
 
             await StartBrowserAsync();
+
             scanResult.PageTitle = await page.TitleAsync();
             scanResult.Links = await GetLinksAsync();
 
@@ -424,88 +425,97 @@ namespace PdnAudit.Core.Services {
         }
         private async Task<(string? PrivacyUrl, string? ConsentUrl)> FindDocumentsLinks() {
             var privacyRegex = new Regex(
-    @"(" +
-        @"политик[аиуеой]\s+(?:в\s+отношении\s+)?(?:конфиденциальност|обработк\w*\s+(?:персональн\w*\s+)?данн|персональн\w*\s+данн|защит\w*\s+(?:персональн\w*\s+)?данн)" +
-        @"|конфиденциальност\w*\s+(?:персональн\w*\s+)?данн" +
-        @"|обработк\w*\s+персональн\w*\s+данн" +
-        @"|privacy\s+(?:policy|notice|statement)" +
-        @"|personal\s+data\s+(?:processing|protection)\s+(?:policy|notice)" +
-        @"|data\s+processing\s+(?:policy|notice)" +
-        @"|политика\s+конфиденциальности" +
-    @")",
-    RegexOptions.IgnoreCase | RegexOptions.Compiled);
-            // Согласие на обработку ПДн
+                @"политик[аиуеой]\s+(?:в\s+отношении\s+)?(?:конфиденциальност|обработк\w*\s+(?:персональн\w*\s+)?данн|персональн\w*\s+данн|защит\w*\s+(?:персональн\w*\s+)?данн)" +
+                @"|конфиденциальност\w*\s+(?:персональн\w*\s+)?данн|обработк\w*\s+персональн\w*\s+данн" +
+                @"|privacy\s+(?:policy|notice|statement)|personal\s+data\s+(?:processing|protection)\s+(?:policy|notice)" +
+                @"|data\s+processing\s+(?:policy|notice)|политика\s+конфиденциальности", RegexOptions.IgnoreCase);
+
             var consentRegex = new Regex(
-    @"(?:" +
-        // 1) "согласие/согласия/согласию/согласием/согласии" + (на) + обработк/использовани/передач + данные/пдн
-        @"согласи\w*\s+(?:на\s+)?(?:обработк\w*|использовани\w*|передач\w*)\s+(?:\w+\s+){0,4}(?:данн\w*|пдн|персональн\w*\s+данн)" +
-        @"|согласи\w*\s+на\s+обработк\w*\s+персональн\w*\s+данн" +
-        // 2) "я согласен/согласна на обработку"
-        @"|я\s+соглас\w*\s+на\s+обработк" +
-        // 3) "дать/даю/предоставляю согласие"
-        @"|(?:дать|даю|предостав\w*)\s+согласи" +
-        // 4) "соглашение" — но НЕ "пользовательское/лицензионное/... соглашение"
-        //    и только если рядом (в пределах 0-4 слов) есть "обработк/пдн/данн/конфиденциальн"
-        @"|(?<!пользовательск\w*\s)(?<!лицензионн\w*\s)(?<!публичн\w*\s)(?<!оферт\w*\s)" +
-          @"соглашени\w*\s+(?:\w+\s+){0,4}(?:обработк\w*|пдн|персональн\w*\s+данн|конфиденциальн\w*)" +
-        // 5) английские варианты
-        @"|(?:data|personal\s+data|pdn|gdpr)\s+consent" +
-        @"|consent\s+(?:to|for)\s+(?:the\s+)?(?:processing|use|transfer)\s+of\s+(?:personal\s+)?data" +
-        @"|i\s+(?:hereby\s+)?consent\s+to\s+(?:the\s+)?processing" +
-        // 6) "соглашение об обработке персональных данных" (частый случай)
-        @"|соглашени\w*\s+об\s+обработк\w*\s+персональн\w*\s+данн" +
-    @")",
-    RegexOptions.IgnoreCase | RegexOptions.Compiled);
+                @"согласи\w*\s+(?:на\s+)?(?:обработк\w*|использовани\w*|передач\w*)\s+(?:\w+\s+){0,4}(?:данн\w*|пдн|персональн\w*\s+данн)" +
+                @"|согласи\w*\s+на\s+обработк\w*\s+персональн\w*\s+данн|я\s+соглас\w*\s+на\s+обработк" +
+                @"|(?:дать|даю|предостав\w*)\s+согласи" +
+                @"|(?<!пользовательск\w*\s)(?<!лицензионн\w*\s)(?<!публичн\w*\s)(?<!оферт\w*\s)соглашени\w*\s+(?:\w+\s+){0,4}(?:обработк\w*|пдн|персональн\w*\s+данн|конфиденциальн\w*)" +
+                @"|(?:data|personal\s+data|pdn|gdpr)\s+consent|consent\s+(?:to|for)\s+(?:the\s+)?(?:processing|use|transfer)\s+of\s+(?:personal\s+)?data|i\s+(?:hereby\s+)?consent\s+to\s+(?:the\s+)?processing" +
+                @"|соглашени\w*\s+об\s+обработк\w*\s+персональн\w*\s+данн", RegexOptions.IgnoreCase);
 
             string? privacyUrl = null;
             string? consentUrl = null;
 
-            var baseUrl = new Uri(page.Url);
+            // Получаем все ссылки ОДНИМ вызовом (через JS), чтобы не дергать DOM в цикле
+            string json = await page.EvaluateAsync<string>("""
+                () => JSON.stringify([...document.querySelectorAll('a[href]')]
+                      .map(a => ({ t: a.innerText || '', h: a.href })))
+            """);
+            var allLinks = JsonSerializer.Deserialize<List<LinkDto>>(json, JsonOpts) ?? new();
+            var baseUri = new Uri(_startUrl); // Берем стартовый URL, а не page.Url!
 
-            var allLinks = await page.GetByRole(AriaRole.Link).AllAsync();
-
-            foreach(var link in allLinks)
+            foreach (var link in allLinks)
             {
                 if (privacyUrl != null && consentUrl != null) break;
-                
-                string text = TextNormalizer.Normalize(await link.TextContentAsync());
-                string href = TextNormalizer.Normalize(await link.GetAttributeAsync("href"));
 
+                // Текст нормализуем, а href оставляем как есть (чтобы не сломать регистр)
+                string text = TextNormalizer.Normalize(link.T);
+                string href = link.H;
+                if (string.IsNullOrEmpty(href) || href.StartsWith("javascript:")) continue;
+
+                // Проверяем только свой домен
+                if (!Uri.TryCreate(href, UriKind.Absolute, out var linkUri)) continue;
+                if (!linkUri.Host.Contains(baseUri.Host)) continue;
+
+                // Ищем согласие
                 if (consentUrl == null && (consentRegex.IsMatch(text) || consentRegex.IsMatch(href)))
                 {
-                    consentUrl = new Uri(baseUrl, href).AbsoluteUri;
+                    consentUrl = linkUri.AbsoluteUri;
                     continue;
                 }
+                // Ищем политику
                 if (privacyUrl == null && (privacyRegex.IsMatch(text) || privacyRegex.IsMatch(href)))
                 {
-                    privacyUrl = new Uri(baseUrl, href).AbsoluteUri;
+                    privacyUrl = linkUri.AbsoluteUri;
                     continue;
                 }
-               
             }
-            if(privacyUrl == null || consentUrl == null)
+
+            // Запасной обход 
+            if (privacyUrl == null || consentUrl == null)
             {
                 List<string> linksByPriority = await FilterAndSortLinksByPriority();
 
                 foreach (var link in linksByPriority)
                 {
-                    await page.GotoAsync(link);
-                    await page.WaitForTimeoutAsync(1000);
-                    var innerLinks = await page.GetByRole(AriaRole.Link).AllAsync();
-                    foreach (var innerLink in innerLinks)
+                    // Открываем в изолированном контексте, чтобы не ломать основной page
+                    var context = await browser.NewContextAsync(new BrowserNewContextOptions
                     {
-                        string text = TextNormalizer.Normalize(await innerLink.TextContentAsync());
-                        string href = TextNormalizer.Normalize(await innerLink.GetAttributeAsync("href"));
-                        if (string.IsNullOrEmpty(href)) continue;
+                        UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                    });
+                    var p = await context.NewPageAsync();
+                    try
+                    {
+                        await p.GotoAsync(link, new() { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 20000 });
+                        await p.WaitForTimeoutAsync(1000);
 
-                        if (consentUrl == null && consentRegex.IsMatch(text))
-                            consentUrl = new Uri(new Uri(page.Url), href).AbsoluteUri;
+                        string innerJson = await p.EvaluateAsync<string>("""
+                            () => JSON.stringify([...document.querySelectorAll('a[href]')]
+                                  .map(a => ({ t: a.innerText || '', h: a.href })))
+                        """);
+                        var innerLinks = JsonSerializer.Deserialize<List<LinkDto>>(innerJson, JsonOpts) ?? new();
 
-                        if (privacyUrl == null && privacyRegex.IsMatch(text))
-                            privacyUrl = new Uri(new Uri(page.Url), href).AbsoluteUri;
+                        foreach (var innerLink in innerLinks)
+                        {
+                            string text = TextNormalizer.Normalize(innerLink.T);
+                            string href = innerLink.H;
+                            if (string.IsNullOrEmpty(href) || !Uri.TryCreate(href, UriKind.Absolute, out var uri)) continue;
+                            if (!uri.Host.Contains(baseUri.Host)) continue; 
+
+                            if (consentUrl == null && consentRegex.IsMatch(text))
+                                consentUrl = uri.AbsoluteUri;
+                            if (privacyUrl == null && privacyRegex.IsMatch(text))
+                                privacyUrl = uri.AbsoluteUri;
+                        }
                     }
+                    catch (PlaywrightException) { /* Игнорируем ошибки загрузки */ }
+                    finally { await context.CloseAsync(); }
 
-                    // Если нашли оба документа — дальше не идем
                     if (privacyUrl != null && consentUrl != null) break;
                 }
             }
@@ -549,32 +559,24 @@ namespace PdnAudit.Core.Services {
 
         public async Task<OperatorInfo> GetOperatorInfoAsync(string? policyUrl, IProgress<ScanProgress> progress = null) {
             progress?.Report(new ScanProgress("Поиск реквизитов оператора..."));
-
             var info = new OperatorInfo();
-            var start = new Uri(page.Url);
+            var start = new Uri(_startUrl);
 
-            // 1. Текущая страница: сначала футер, потом всё остальное
             await ExtractOperatorFromPageAsync(page, info);
 
-            // 2. Страницы «Контакты», «Реквизиты», «О компании»
             var urls = await FindContactPagesAsync(start);
-            if (!string.IsNullOrEmpty(policyUrl)) urls.Add(policyUrl);   // 3. Сама политика
+            if (!string.IsNullOrEmpty(policyUrl)) urls.Add(policyUrl);
 
             foreach (var url in urls.Distinct().Take(4))
             {
                 var newContext = await browser.NewContextAsync(new BrowserNewContextOptions
                 {
-                    UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                 });
                 var p = await newContext.NewPageAsync();
-
                 try
                 {
-                    await p.GotoAsync(url, new()
-                    {
-                        WaitUntil = WaitUntilState.Commit,
-                        Timeout = 45000
-                    });
+                    await p.GotoAsync(url, new() { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 30000 });
                     await p.WaitForTimeoutAsync(1000);
                     await ExtractOperatorFromPageAsync(p, info);
                 }
@@ -584,7 +586,6 @@ namespace PdnAudit.Core.Services {
                 }
                 finally
                 {
-                    // Обязательно закрываем контекст, чтобы не копить память
                     await newContext.CloseAsync();
                 }
             }
